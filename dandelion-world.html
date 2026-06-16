@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蒲公英梦境 · Dandelion World</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Microsoft YaHei',sans-serif;}
+#sky{position:fixed;inset:0;z-index:0;
+  background:linear-gradient(180deg,#9dd0ef 0%,#b8e0f5 22%,#d4eef8 45%,#e2f5dc 65%,#c2e09a 100%);}
+#cloud-layer{position:fixed;inset:0;z-index:1;overflow:hidden;pointer-events:none;}
+.cloud{position:absolute;will-change:transform;}
+#c3d{position:fixed;inset:0;z-index:2;transition:filter .4s ease;}
+#c3d.blurred{filter:blur(18px) brightness(0.82) saturate(0.7);}
+#cam-box{
+  position:fixed;bottom:16px;left:16px;z-index:50;
+  width:200px;height:150px;border-radius:14px;overflow:hidden;
+  border:2.5px solid rgba(255,255,255,.8);
+  box-shadow:0 4px 20px rgba(100,180,240,.5);
+  background:#111;
+}
+#vid{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;}
+#ov{position:absolute;inset:0;transform:scaleX(-1);}
+
+/* 捏合聚焦：放大居中展示单株蒲公英 */
+#focus-wrap{
+  position:fixed;inset:0;z-index:30;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;transition:opacity .35s ease;
+}
+#focus-wrap.show{opacity:1;}
+#focus-canvas{
+  width:min(80vmin,640px);height:min(80vmin,640px);
+  border-radius:24px;
+  box-shadow:0 0 80px rgba(200,240,255,.5),0 0 140px rgba(160,220,240,.25);
+  background:radial-gradient(circle,rgba(255,255,255,.10),transparent 70%);
+}
+
+#hud{
+  position:fixed;top:9px;left:50%;transform:translateX(-50%);
+  z-index:60;display:flex;gap:8px;align-items:center;
+  background:rgba(0,0,0,.45);color:#fff;border-radius:22px;
+  padding:5px 16px;font-size:11.5px;white-space:nowrap;pointer-events:none;
+}
+.hi{display:flex;align-items:center;gap:4px;}
+.hd{width:7px;height:7px;border-radius:50%;background:#555;flex-shrink:0;}
+.hd.ok{background:#6ee69a;}
+.hd.act{background:#ff7eb8;animation:pulse .5s infinite alternate;}
+@keyframes pulse{to{opacity:.3;}}
+#panel{
+  position:fixed;top:14px;right:14px;z-index:50;
+  width:220px;padding:14px 16px;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(20px);
+  border:1.5px solid rgba(255,255,255,.85);border-radius:18px;
+  box-shadow:0 6px 26px rgba(150,200,240,.35);
+  color:#5580a0;font-size:13px;
+}
+#panel h3{font-size:14px;font-weight:700;color:#6aabcc;margin-bottom:11px;}
+.cr{margin-bottom:9px;}
+.cl{display:flex;justify-content:space-between;font-size:11px;color:#7aabcc;margin-bottom:2px;}
+input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
+.sr{display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:6px;
+  border-top:1px solid rgba(160,210,240,.3);font-size:11px;color:#8ab8d0;}
+.sd{width:6px;height:6px;border-radius:50%;background:#ccc;flex-shrink:0;}
+#tips{
+  position:fixed;bottom:16px;right:16px;z-index:50;
+  background:rgba(255,255,255,.52);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.75);border-radius:13px;
+  padding:10px 13px;font-size:11.5px;color:#6a9aba;line-height:1.9;max-width:195px;
+}
+.tt{font-weight:700;font-size:12.5px;margin-bottom:3px;color:#5a8aaa;}
+#atxt{
+  position:fixed;top:42%;left:50%;transform:translate(-50%,-50%);
+  z-index:40;pointer-events:none;opacity:0;
+  font-size:34px;font-weight:700;color:#fff;
+  text-shadow:0 3px 20px rgba(120,200,255,.9);letter-spacing:.08em;
+}
+#dbg{
+  position:fixed;left:16px;bottom:175px;z-index:60;
+  background:rgba(0,0,0,.65);color:#0ff;font-size:10px;
+  border-radius:8px;padding:8px 12px;line-height:1.8;
+  font-family:monospace;min-width:220px;display:none;
+}
+#dbg.show{display:block;}
+/* 庆祝弹窗：双手合十 + 大部分蒲公英已吹散 */
+#celebration-popup{
+  position:fixed;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.25);backdrop-filter:blur(6px);
+  opacity:0;pointer-events:none;transition:opacity .5s ease;
+}
+#celebration-popup.show{opacity:1;pointer-events:auto;}
+#celebration-box{
+  text-align:center;background:linear-gradient(145deg,rgba(255,255,255,.92),rgba(245,250,255,.88));
+  backdrop-filter:blur(24px);border:2px solid rgba(200,235,255,.7);
+  border-radius:28px;padding:42px 48px 36px;
+  box-shadow:0 10px 50px rgba(120,200,240,.35),0 0 80px rgba(160,220,240,.15),inset 0 1px 0 rgba(255,255,255,.9);
+  max-width:430px;transform:scale(.9);transition:transform .45s cubic-bezier(.34,1.56,.64,1);
+}
+#celebration-popup.show #celebration-box{transform:scale(1);}
+.celeb-icon{font-size:52px;margin-bottom:14px;}
+.celeb-text{
+  font-size:19px;font-weight:700;color:#5a90b0;line-height:1.7;
+  margin-bottom:28px;letter-spacing:.03em;
+}
+.celeb-highlight{color:#e87a9a;font-size:21px;display:block;margin-bottom:4px;}
+#btn-replay{
+  display:inline-block;padding:13px 44px;border:none;border-radius:50px;
+  font-size:17px;font-weight:700;color:#fff;cursor:pointer;
+  background:linear-gradient(135deg,#7ecce8,#a0d8f0,#90c0e0);
+  box-shadow:0 5px 22px rgba(100,190,230,.4),inset 0 1px 0 rgba(255,255,255,.4);
+  transition:all .3s ease;letter-spacing:.06em;
+}
+#btn-replay:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(100,190,230,.55);}
+#btn-replay:active{transform:translateY(0);}
+#loader{
+  position:fixed;inset:0;z-index:999;
+  background:linear-gradient(180deg,#b8dff5,#d8eff8,#ceeab5);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  transition:opacity .9s;
+}
+#loader.bye{opacity:0;pointer-events:none;}
+.spin{width:56px;height:56px;animation:spin 2.5s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ltxt{color:#6090b0;font-size:14px;letter-spacing:.06em;}
+.lbar{width:190px;height:4px;border-radius:4px;background:rgba(160,210,240,.3);overflow:hidden;}
+.lfill{height:100%;border-radius:4px;background:linear-gradient(90deg,#a0d4e8,#f0b8c8,#a8e0c8);animation:lf 1.8s ease-in-out infinite;}
+@keyframes lf{0%{width:0;margin-left:0}50%{width:60%;margin-left:0}100%{width:0;margin-left:100%}}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <svg class="spin" viewBox="0 0 52 52" fill="none">
+    <circle cx="26" cy="26" r="3.5" fill="#a0d4e8"/>
+    <line x1="26" y1="22.5" x2="26" y2="12" stroke="#b0e0cc" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="26" y1="29.5" x2="26" y2="40" stroke="#b0e0cc" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="22.5" y1="26" x2="12" y2="26" stroke="#f0b8c8" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="29.5" y1="26" x2="40" y2="26" stroke="#f0b8c8" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="24" y1="24" x2="16.5" y2="16.5" stroke="#c8b0e0" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="28" y1="28" x2="35.5" y2="35.5" stroke="#c8b0e0" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="28" y1="24" x2="35.5" y2="16.5" stroke="#f0d0b0" stroke-width="1.4" stroke-linecap="round"/>
+    <line x1="24" y1="28" x2="16.5" y2="35.5" stroke="#f0d0b0" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>
+  <div id="ltxt">蒲公英梦境加载中…</div>
+  <div class="lbar"><div class="lfill"></div></div>
+</div>
+
+<div id="sky"></div>
+<div id="cloud-layer"></div>
+<canvas id="c3d"></canvas>
+
+<!-- 捏合聚焦放大层 -->
+<div id="focus-wrap">
+  <canvas id="focus-canvas"></canvas>
+</div>
+
+<div id="cam-box">
+  <video id="vid" autoplay muted playsinline></video>
+  <canvas id="ov"></canvas>
+</div>
+
+<div id="dbg">
+  <b>📡 调试面板 (D键关闭)</b><br>
+  <span id="dbg-cam">摄像头: 等待</span><br>
+  <span id="dbg-hand">手部: 未加载</span><br>
+  <span id="dbg-face">面部: 未加载</span><br>
+  <span id="dbg-pinch">捏合: -</span><br>
+  <span id="dbg-pout">嘴型: -</span><br>
+  <span id="dbg-palm">张手: -</span><br>
+  <span id="dbg-together">合十: -</span><br>
+  <span id="dbg-blown">吹散比: -</span><br>
+  <span id="dbg-fps">帧率: -</span>
+</div>
+
+<div id="hud">
+  <div class="hi"><div class="hd" id="hd-cam"></div><span id="ht-cam">摄像头</span></div>
+  <span style="opacity:.3">|</span>
+  <div class="hi"><div class="hd" id="hd-hand"></div><span id="ht-hand">手部</span></div>
+  <div class="hi"><div class="hd" id="hd-pinch"></div><span id="ht-pinch">未捏</span></div>
+  <div class="hi"><div class="hd" id="hd-palm"></div><span id="ht-palm">未张</span></div>
+  <div class="hi"><div class="hd" id="hd-together"></div><span id="ht-together">合十</span></div>
+  <span style="opacity:.3">|</span>
+  <div class="hi"><div class="hd" id="hd-face"></div><span id="ht-face">面部</span></div>
+  <div class="hi"><div class="hd" id="hd-pout"></div><span id="ht-pout">嘴</span></div>
+  <div class="hi"><div class="hd" id="hd-blown"></div><span id="ht-blown">吹散0%</span></div>
+</div>
+
+<div id="panel">
+  <h3>🌸 蒲公英梦境</h3>
+  <div class="cr">
+    <div class="cl"><span>飘散速度</span><span id="vspeed">1.0</span></div>
+    <input type="range" id="rspeed" min="0.2" max="4" step="0.1" value="1.0">
+  </div>
+  <div class="cr">
+    <div class="cl"><span>风力强度(固定)</span><span id="vwind">1.8</span></div>
+    <input type="range" id="rwind" min="0.3" max="3.5" step="0.1" value="1.8">
+  </div>
+  <div class="cr">
+    <div class="cl"><span>捏合灵敏度</span><span id="vpinch">8</span></div>
+    <input type="range" id="rpinch" min="3" max="25" step="1" value="8">
+  </div>
+  <div class="cr">
+    <div class="cl"><span>撅嘴灵敏度</span><span id="vpout">12</span></div>
+    <input type="range" id="rpout" min="5" max="40" step="1" value="12">
+  </div>
+  <div class="sr"><div class="sd" id="cam-sd"></div><span id="cam-st">摄像头初始化中</span></div>
+  <div class="sr"><div class="sd" id="hand-sd"></div><span id="hand-st">等待加载</span></div>
+  <div class="sr"><div class="sd" id="face-sd"></div><span id="face-st">等待加载</span></div>
+</div>
+
+<div id="tips">
+  <div class="tt">✋ 手势说明</div>
+  👌 捏合 → 抓取并放大蒲公英<br>
+  💨 捏合中撅嘴 → 吹散该株种子<br>
+  ✋ 松开捏合 → 轻轻放下<br>
+  🖐 5指展开(持续) → 全复原<br>
+  😮 撅起嘴巴 → 区域吹散<br>
+  🙏 双手合十(吹散后)→ 庆祝弹窗，再玩一次<br>
+  <br>
+  <span style="font-size:10.5px;color:#7a9ab8;line-height:1.7">
+    💡 <b>双手合十</b>：当大部分蒲公英被吹散后，<br>
+    &nbsp;&nbsp;&nbsp;把两只手的手掌靠近（像祈祷/拜佛姿势），<br>
+    &nbsp;&nbsp;&nbsp;保持约1秒即可弹出庆祝框~<br>
+    &nbsp;&nbsp;&nbsp;点击「再玩一次」让所有蒲公英重新长出！
+  </span><br><br>
+  <span style="font-size:10px;color:#8ab8d0">键盘: B=吹散 G=抓/吹 P=放下 R=复原 D=调试</span>
+</div>
+<div id="atxt"></div>
+
+<!-- 庆祝弹窗：双手合十 + 大部分蒲公英吹散后弹出 -->
+<div id="celebration-popup">
+  <div id="celebration-box">
+    <div class="celeb-icon">🌼✨🌸</div>
+    <p class="celeb-text">
+      <span class="celeb-highlight">太奇妙了！</span>你赋予了飘散的蒲公英第二次生命！
+    </p>
+    <button id="btn-replay">🌿 再玩一次</button>
+  </div>
+</div>
+
+<!-- Three.js + GSAP -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════
+//  全局配置
+// ═══════════════════════════════════
+const CFG = {
+  seedSpeed:    1.0,
+  windStrength: 1.8,   // 固定风力（较强，持续吹动效果）
+  pinchThresh:  0.08,   // 捏合距离阈值（归一化，手部图像宽度比例）
+  poutThresh:   0.12,   // 撅嘴收窄率阈值（嘴宽相对于基准缩小>12%即触发）
+};
+
+// 调试工具
+const dbgEl = id => document.getElementById(id);
+function dbgSet(id,txt){ const e=dbgEl(id); if(e) e.textContent=txt; }
+document.addEventListener('keydown', e=>{
+  if(e.key.toLowerCase()==='d') dbgEl('dbg').classList.toggle('show');
+});
+
+// ═══════════════════════════════════
+//  控制面板（全部实时生效）
+// ═══════════════════════════════════
+function bindPanel(){
+  const bind = (rangeId, key, dispId, fn) => {
+    const el = document.getElementById(rangeId);
+    const update = () => {
+      CFG[key] = fn(el.value);
+      document.getElementById(dispId).textContent = parseFloat(el.value).toFixed(1).replace(/\.0$/,'');
+    };
+    el.addEventListener('input', update);
+    update();
+  };
+  bind('rspeed','seedSpeed',  'vspeed', v=>parseFloat(v));
+  bind('rwind', 'windStrength','vwind', v=>parseFloat(v));
+  bind('rpinch','pinchThresh','vpinch', v=>parseInt(v)/100);
+  bind('rpout', 'poutThresh', 'vpout',  v=>parseInt(v)/100);
+}
+
+// ═══════════════════════════════════
+//  云朵
+// ═══════════════════════════════════
+function initClouds(){
+  const layer = document.getElementById('cloud-layer');
+  const W = window.innerWidth;
+  const specs=[
+    {top:'2%',s:1.6,spd:44,op:.9},{top:'9%',s:.95,spd:62,op:.72},
+    {top:'15%',s:1.3,spd:50,op:.8},{top:'5%',s:.75,spd:72,op:.65},
+    {top:'19%',s:1.1,spd:46,op:.82},{top:'1%',s:.88,spd:60,op:.7},
+    {top:'12%',s:1.4,spd:54,op:.76},{top:'7%',s:1.0,spd:57,op:.68},
+  ];
+  specs.forEach(({top,s,spd,op})=>{
+    const d = document.createElement('div');
+    d.className = 'cloud';
+    d.style.cssText = `top:${top};opacity:${op};`;
+    d.innerHTML = `<svg width="${210*s}" height="${90*s}" viewBox="0 0 210 90" fill="none">
+      <ellipse cx="105" cy="65" rx="100" ry="30" fill="rgba(255,255,255,.94)"/>
+      <ellipse cx="68" cy="47" rx="50" ry="34" fill="rgba(255,255,255,.93)"/>
+      <ellipse cx="140" cy="46" rx="46" ry="32" fill="rgba(255,255,255,.90)"/>
+      <ellipse cx="103" cy="38" rx="38" ry="29" fill="rgba(255,255,255,.97)"/>
+    </svg>`;
+    layer.appendChild(d);
+    gsap.to(d,{y:'+=14',duration:3+Math.random()*2.2,ease:'sine.inOut',yoyo:true,repeat:-1,delay:Math.random()*4});
+    const sx = Math.random()*(W+420*s)-210*s;
+    gsap.set(d,{x:sx});
+    (function loop(){
+      gsap.to(d,{x:W+215*s,duration:spd*(0.85+Math.random()*.3),ease:'none',onComplete:()=>{
+        gsap.set(d,{x:-215*s}); loop();
+      }});
+    })();
+  });
+}
+
+// ═══════════════════════════════════
+//  Three.js 场景
+// ═══════════════════════════════════
+const cvs = document.getElementById('c3d');
+const renderer = new THREE.WebGLRenderer({canvas:cvs,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,500);
+// 摄像机位置：让草地+蒲公英占满下三分之一
+cam.position.set(0,14,28);
+cam.lookAt(0,-4,0);
+scene.add(new THREE.AmbientLight(0xfff0e8,1.5));
+const sun = new THREE.DirectionalLight(0xffe8cc,1.8);
+sun.position.set(10,20,12); sun.castShadow=true; scene.add(sun);
+
+// 草地（宽广起伏，丰富质感）
+(function(){
+  // 主草地：高细分 + 多层起伏
+  const geo = new THREE.PlaneGeometry(140,50,240,90);
+  const pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i);
+    // 多层叠加起伏：大坡+中波+小丘陵+随机细节
+    const y0 = Math.sin(x*.18)*.70;
+    const y1 = Math.cos(z*.26)*.50;
+    const y2 = Math.sin(x*.42+z*.35)*.30;
+    const y3 = Math.cos(x*.65-z*.22)*.18;
+    const y4 = Math.random()*.15;  // 微观粗糙
+    pos.setY(i, y0+y1+y2+y3+y4);
+  }
+  pos.needsUpdate=true; geo.computeVertexNormals();
+
+  // 更丰富的颜色变化：深绿→翠绿→黄绿→嫩草，带高度明暗
+  const col=[];
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i);
+    const y=pos.getY(i);  // 高度影响颜色（高地偏亮）
+    const t=(x+60)/120;   // 横向渐变
+    const ht = (y+1.5)/3; // 归一化高度(0~1)
+    // 基础色带横向和高度混合
+    const r = .38 + t*.20 + ht*.12 + Math.random()*.08;
+    const g = .62 + t*.08 + ht*.15 + Math.random()*.10;
+    const b = .28 + t*.14 + ht*.08 + Math.random()*.07;
+    col.push(
+      Math.min(r, .72),
+      Math.min(g, .88),
+      Math.min(b, .52)
+    );
+  }
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  const mat = new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+  const m = new THREE.Mesh(geo,mat);
+  m.rotation.x=-Math.PI/2; m.position.y=-2.2; m.receiveShadow=true;
+  scene.add(m);
+
+  // 第二层：草地绒毛纹理（细密小草丛点缀）
+  const bladeGeo = new THREE.PlaneGeometry(145,52);
+  const bladeCols=[];
+  for(let i=0;i<bladeGeo.attributes.position.count;i++){
+    // 比主草稍亮稍暖的绿色系，带随机变化
+    const c = .55+Math.random()*.18;
+    const g = .75+Math.random()*.13;
+    const b = .35+Math.random()*.15;
+    bladeCols.push(c,g,b,.45);  // 带透明度的顶点色
+  }
+  bladeGeo.setAttribute('color',new THREE.Float32BufferAttribute(bladeCols,4));
+  const bladeMat = new THREE.MeshLambertMaterial({
+    vertexColors:true,
+    transparent:true,
+    opacity:.35,
+    side:THREE.DoubleSide,
+    depthWrite:false
+  });
+  const blades = new THREE.Mesh(bladeGeo,bladeMat);
+  blades.rotation.x=-Math.PI/2;
+  blades.position.y=-2.15;  // 稍微浮在主草之上
+  scene.add(blades);
+
+  // 第三层：散落的"小草叶"粒子群（增加微观质感）
+  const patchCount = 800;
+  const patchGeo = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(.6+.8*Math.random(), .25+.35*Math.random()),
+    new THREE.MeshLambertMaterial({
+      color:0x7ac04a,
+      transparent:true, opacity:.40,
+      side:THREE.DoubleSide, depthWrite:false
+    }),
+    patchCount
+  );
+  const dummy = new THREE.Object3D();
+  const patchColors = [0x6ab840,0x78c84e,0x82d05a,0x5cb038,0x68b844];
+  for(let i=0;i<patchCount;i++){
+    dummy.position.set(
+      (Math.random()-.5)*135,
+      -2.10+Math.random()*0.25,
+      (Math.random()-.5)*47
+    );
+    dummy.rotation.set(-Math.PI/2+Math.random()*.25-Math.random()*0.15, Math.random()*Math.PI*2, Math.random()*0.3);
+    dummy.scale.setScalar(0.6+Math.random()*1.0);
+    dummy.updateMatrix();
+    patchGeo.setMatrixAt(i,dummy.matrix);
+  }
+  scene.add(patchGeo);
+})();
+
+// ═══════════════════════════════════
+//  蒲公英系统
+// ═══════════════════════════════════
+const dands = [];
+const flyQ  = [];
+// 更鲜明的颜色：种子亮金黄，头球白色绒毛感，茎翠绿
+const SEED_COL  = new THREE.Color(0xffe066);  // 亮金黄
+const SEED_COL2 = new THREE.Color(0xffd030);  // 深金黄（备用）
+const HEAD_COL  = new THREE.Color(0xfafaf2);  // 近白色绒毛
+const STEM_COLS = [0x5cbb55,0x44aa3c,0x6acc5a,0x3da038,0x78cc68]; // 更鲜明翠绿
+// 更大的几何体：头球0.45，种子0.12，wire 1.0
+const SEED_GEO  = new THREE.SphereGeometry(.12,5,4);
+const WIRE_GEO  = new THREE.CylinderGeometry(.009,.009,1.0,4);
+
+function makeSeedGroup(headY, i, N){
+  const phi   = Math.acos(-1+(2*i)/N);
+  const theta = Math.sqrt(N*Math.PI)*phi;
+  const sg = new THREE.Group();
+  sg.position.y = headY;
+  // wire：绿白渐变感
+  sg.add(new THREE.Mesh(WIRE_GEO,
+    new THREE.MeshBasicMaterial({color:0xe8f5d0,transparent:true,opacity:.75})));
+  // 种子球：金黄色，发光感
+  const seedColor = Math.random()>.4 ? SEED_COL : SEED_COL2;
+  const bm = new THREE.Mesh(SEED_GEO,
+    new THREE.MeshBasicMaterial({color:seedColor,transparent:true,opacity:1.0,depthWrite:false}));
+  bm.position.y=1.0; sg.add(bm);
+  sg.rotation.x=phi-Math.PI/2; sg.rotation.z=theta;
+  return {mesh:sg, mat:bm.material, rx0:sg.rotation.x, rz0:sg.rotation.z, blown:false};
+}
+
+function makeDand(x,z){
+  const g = new THREE.Group();
+  g.position.set(x,-2.2,z);
+  const stemH = (1.0+Math.random()*.8)*2; // 茎高×2
+  // 茎（更鲜明的绿）
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(.050,.090,stemH,5),
+    new THREE.MeshLambertMaterial({color:STEM_COLS[Math.floor(Math.random()*5)]})
+  );
+  stem.position.y = stemH/2; g.add(stem);
+  // 球头（更大更白）
+  const headY = stemH;
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(.45,10,7),
+    new THREE.MeshLambertMaterial({color:HEAD_COL,transparent:true,opacity:.95})
+  );
+  head.position.y = headY; g.add(head);
+  // 种子（每株20颗，更密更圆满）
+  const seeds=[];
+  const N=20;
+  for(let i=0;i<N;i++){
+    const sd = makeSeedGroup(headY, i, N);
+    g.add(sd.mesh);
+    seeds.push(sd);
+  }
+  scene.add(g);
+  dands.push({
+    g,head,seeds,headY,stemH,state:'idle',
+    phase:Math.random()*Math.PI*2,
+    amp:.055+Math.random()*.065,   // 风吹摇摆幅度（更强）
+    spd:.45+Math.random()*.55,     // 摇摆速度（更快）,
+    ox:x,oz:z
+  });
+}
+
+function buildField(){
+  // 300株：25列×12行，铺满下三分之一视野
+  const cols=25, rows=12, xR=120, zMin=-6, zMax=16;
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const x = -xR/2 + (c/(cols-1))*xR + (Math.random()-.5)*4.0;
+      const z = zMin + (r/(rows-1))*(zMax-zMin) + (Math.random()-.5)*2.0;
+      makeDand(x,z);
+    }
+  }
+}
+
+function launchSeed(sd,dand,dir){
+  if(sd.blown) return;
+  sd.blown=true;
+  const wp=new THREE.Vector3();
+  sd.mesh.getWorldPosition(wp);
+  dand.g.remove(sd.mesh);
+  sd.mesh.position.copy(wp);
+  sd.mesh.rotation.set(0,0,0);
+  scene.add(sd.mesh);
+  // 更快的初速，范围更大
+  const spd = (.025+Math.random()*.040)*CFG.seedSpeed;
+  let vx,vy,vz;
+  if(dir){
+    vx = dir.x*spd+(Math.random()-.5)*.018;
+    vy = dir.y*spd+Math.random()*.012;
+    vz = dir.z*spd+(Math.random()-.5)*.015;
+  }else{
+    const a=Math.random()*Math.PI*2;
+    vx = Math.cos(a)*spd*.8+(Math.random()-.5)*.015;
+    vy = (.5+Math.random()*.8)*spd;
+    vz = Math.sin(a)*spd*.8+(Math.random()-.5)*.015;
+  }
+  // 每颗种子的scale也随机放大一点
+  const sc = .85+Math.random()*.55;
+  sd.mesh.scale.setScalar(sc);
+  flyQ.push({mesh:sd.mesh,mat:sd.mat,vel:{x:vx,y:vy,z:vz},life:0,
+    maxLife:250+Math.random()*200,seed:sd});  // 飘散时间更长
+}
+
+function blowDand(dand,dir){
+  if(dand.state==='blown') return;
+  dand.state='blown';
+  dand.seeds.forEach((s,i)=>{
+    // 更短间隔，让种子更快速密集飞出（爆发感）
+    setTimeout(()=>launchSeed(s,dand,dir), i*Math.max(3,18/CFG.seedSpeed));
+  });
+  gsap.to(dand.head.material,{opacity:0,duration:.4,ease:'power2.in'});
+  gsap.to(dand.head.scale,{x:0,y:0,z:0,duration:.35,ease:'back.in'});
+}
+
+function rebuildSeeds(d){
+  // 移除旧种子（无论在哪个parent）
+  d.seeds.forEach(s=>{
+    if(s.mesh.parent) s.mesh.parent.remove(s.mesh);
+  });
+  d.seeds.length=0;
+  const N=20;  // 与makeDand保持一致
+  for(let i=0;i<N;i++){
+    const sd=makeSeedGroup(d.headY,i,N);
+    d.g.add(sd.mesh);
+    d.seeds.push(sd);
+  }
+}
+
+function resetAll(){
+  flyQ.forEach(f=>{ if(f.mesh.parent===scene) scene.remove(f.mesh); });
+  flyQ.length=0;
+  dands.forEach(d=>{
+    d.state='idle';
+    gsap.killTweensOf(d.g.position);
+    gsap.to(d.g.position,{x:d.ox,y:-2.2,z:d.oz,duration:.65,ease:'power2.out'});
+    // 头部先隐藏再弹出
+    d.head.material.opacity=0;
+    d.head.scale.set(0,0,0);
+    gsap.to(d.head.material,{opacity:.9,duration:.5,delay:.1});
+    gsap.to(d.head.scale,{x:1,y:1,z:1,duration:.7,ease:'elastic.out(1,.5)',delay:.1});
+    // 重建所有种子（先scale=0，然后逐根弹出）
+    rebuildSeeds(d);
+    d.seeds.forEach((s,i)=>{
+      s.mesh.scale.set(0,0,0);
+      s.mat.opacity=0;
+      const delay = .25 + i*0.04 + Math.random()*0.06;
+      gsap.to(s.mesh.scale,{x:1,y:1,z:1,duration:.55,ease:'elastic.out(1.2,.6)',delay});
+      gsap.to(s.mat,{opacity:.9,duration:.4,delay});
+    });
+    d.g.rotation.set(0,0,0);
+  });
+  grabbedDand=null;
+  releaseFocus();
+  // 重置庆祝状态，允许再次触发
+  celebrationShown=false;
+  togetherHold=0;
+}
+
+// ═══════════════════════════════════
+//  聚焦放大逻辑（捏合时放大居中）
+// ═══════════════════════════════════
+const focusCvs = document.getElementById('focus-canvas');
+const focusCtx = focusCvs.getContext('2d');
+const focusWrap = document.getElementById('focus-wrap');
+let focusRenderer=null, focusScene=null, focusCam=null;
+let focusDandRef=null;
+let focusAnimId=null;
+
+function initFocusRenderer(){
+  const sz = Math.min(window.innerWidth*.8, window.innerHeight*.8, 640);
+  focusCvs.width = sz; focusCvs.height = sz;
+  // 独立的小型Three.js渲染器（offscreen canvas）
+  focusRenderer = new THREE.WebGLRenderer({antialias:true,alpha:true});
+  focusRenderer.setSize(sz,sz);
+  focusRenderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  focusScene = new THREE.Scene();
+  // 相机后移，FOV加大，让整株蒲公英（茎+头球+种子）完整入镜
+  focusCam = new THREE.PerspectiveCamera(60,1,.1,200);
+  focusCam.position.set(0,4,12);
+  focusCam.lookAt(0,2.5,0);
+  focusScene.add(new THREE.AmbientLight(0xfff5f0,2.0));
+  const fSun=new THREE.DirectionalLight(0xffe8d0,2.2);
+  fSun.position.set(3,8,5); focusScene.add(fSun);
+  // 聚焦粒子队列（吹散时在focusScene内飘散）
+  focusScene.userData.flyQ = [];
+}
+
+function showFocus(dand){
+  if(!focusRenderer) initFocusRenderer();
+  focusDandRef = dand;
+
+  // 克隆该株蒲公英到focusScene
+  if(focusScene.userData.clone) focusScene.remove(focusScene.userData.clone);
+  // 先清空残留粒子
+  (focusScene.userData.flyQ||[]).forEach(f=>focusScene.remove(f.mesh));
+  focusScene.userData.flyQ = [];
+
+  const clone = dand.g.clone(true);
+  clone.position.set(-3.0,-3.2,0);
+  clone.rotation.set(0,0,0);
+  clone.scale.set(2.5,2.5,2.5);  // 聚焦视图放大系数
+  focusScene.add(clone);
+  focusScene.userData.clone = clone;
+
+  cvs.classList.add('blurred');
+  focusWrap.classList.add('show');
+
+  // 持续渲染聚焦画面（含粒子物理）
+  let a=0;
+  function tick(){
+    focusAnimId=requestAnimationFrame(tick);
+    a+=0.012;
+    clone.rotation.y=a;
+    clone.rotation.z=Math.sin(a*1.2)*.04;
+
+    // 聚焦场景内的飞散粒子物理（使用固定风力）
+    const fq = focusScene.userData.flyQ;
+    for(let i=fq.length-1;i>=0;i--){
+      const f=fq[i]; f.life++;
+      const t=f.life/f.maxLife;
+      f.vel.y -= .00020;
+      f.vel.x += CFG.windStrength*.0012;  // 固定强风力
+      f.vel.x += (Math.random()-.5)*.0011;
+      f.vel.z += (Math.random()-.5)*.0007;
+      f.mesh.position.x+=f.vel.x;
+      f.mesh.position.y+=f.vel.y;
+      f.mesh.position.z+=f.vel.z;
+      f.mesh.rotation.x+=.038; f.mesh.rotation.z+=.030;
+      f.mat.opacity=Math.max(0,(1-t*t)*.95);
+      if(f.life>=f.maxLife){
+        focusScene.remove(f.mesh);
+        fq.splice(i,1);
+      }
+    }
+    // 所有粒子消散后，延迟关闭聚焦层（仅当已标记为等待关闭时）
+    if(focusScene.userData.waitingClose && fq.length===0){
+      focusScene.userData.waitingClose=false;
+      setTimeout(()=>releaseFocus(), 400);  // 稍微停顿再关闭，视觉更流畅
+    }
+
+    focusRenderer.render(focusScene,focusCam);
+    focusCtx.clearRect(0,0,focusCvs.width,focusCvs.height);
+    focusCtx.drawImage(focusRenderer.domElement,0,0);
+  }
+  if(focusAnimId) cancelAnimationFrame(focusAnimId);
+  focusScene.userData.waitingClose=false;
+  tick();
+}
+
+function releaseFocus(){
+  cvs.classList.remove('blurred');
+  focusWrap.classList.remove('show');
+  if(focusAnimId){ cancelAnimationFrame(focusAnimId); focusAnimId=null; }
+  if(focusScene){
+    if(focusScene.userData.clone){
+      focusScene.remove(focusScene.userData.clone);
+      focusScene.userData.clone=null;
+    }
+    // 清除焦点内飘散粒子
+    (focusScene.userData.flyQ||[]).forEach(f=>focusScene.remove(f.mesh));
+    focusScene.userData.flyQ=[];
+    focusScene.userData.waitingClose=false;
+  }
+  focusDandRef=null;
+}
+
+// ─── 在聚焦视图内吹散种子（保持模糊背景，等种子飘散完再关闭）───
+function blowDandInFocus(dand){
+  if(!focusScene||!focusScene.userData.clone) return;
+  const clone = focusScene.userData.clone;
+  const fq = focusScene.userData.flyQ;
+  const sc = clone.scale.x; // 放大系数
+  const N = dand.seeds.length;
+
+  // 克隆种子mesh到focusScene，从克隆体的当前位置飞出
+  dand.seeds.forEach((sd,i)=>{
+    if(sd.blown) return;
+    sd.blown=true; // 标记原始株种子为已吹散（防止主场景重复处理）
+
+    setTimeout(()=>{
+      if(!focusScene) return;
+      // 从clone子节点获取对应种子的世界坐标
+      const seedMesh = clone.children[clone.children.length - N + i]; // 种子在clone的最后N个子对象
+      const wp = new THREE.Vector3();
+      if(seedMesh) {
+        seedMesh.getWorldPosition(wp);
+      } else {
+        // 估算位置
+        wp.set((Math.random()-.5)*sc*.5, dand.headY*sc*.5+2, (Math.random()-.5)*sc*.5);
+      }
+
+      // 创建独立种子mesh（不从clone摘取，而是新建一个）
+      const m = new THREE.Mesh(
+        SEED_GEO,
+        new THREE.MeshBasicMaterial({color:Math.random()>.4?SEED_COL:SEED_COL2,
+          transparent:true,opacity:1.0,depthWrite:false})
+      );
+      m.position.copy(wp);
+      const msc = (0.9+Math.random()*.6)*sc*.18;
+      m.scale.setScalar(msc);
+      focusScene.add(m);
+
+      // 飞散速度：从中心向四周爆散，配合聚焦场景缩放
+      const spd = (.03+Math.random()*.05)*CFG.seedSpeed*sc*.12;
+      const angle = Math.random()*Math.PI*2;
+      const vElev = .4+Math.random()*.7;
+      fq.push({
+        mesh:m, mat:m.material,
+        vel:{
+          x:Math.cos(angle)*spd+(Math.random()-.5)*.018,
+          y:vElev*spd,
+          z:Math.sin(angle)*spd*.5+(Math.random()-.5)*.015
+        },
+        life:0, maxLife:280+Math.random()*180
+      });
+    }, i * Math.max(4, 20/CFG.seedSpeed));
+  });
+
+  // 隐藏clone的头球和种子
+  const clone2 = focusScene.userData.clone;
+  clone2.traverse(child=>{
+    if(child.isMesh){
+      gsap.to(child.material,{opacity:0,duration:.5,ease:'power2.in'});
+    }
+  });
+
+  // 标记：粒子全消散后自动关闭聚焦层
+  focusScene.userData.waitingClose = true;
+
+  // 同步让主场景的原株也消失
+  dand.state='blown';
+  gsap.to(dand.head.material,{opacity:0,duration:.3});
+  gsap.to(dand.head.scale,{x:0,y:0,z:0,duration:.3,ease:'back.in'});
+  dand.seeds.forEach(s=>{
+    if(s.mesh.parent) s.mesh.parent.remove(s.mesh);
+  });
+}
+
+// ═══════════════════════════════════
+//  状态机
+// ═══════════════════════════════════
+const HS={detected:false,pinch:false,prevPinch:false,palm:false,px:.5,py:.5,dist:1,handsTogether:false};
+const FS={detected:false,pout:false,ratio:0,lx:.5,ly:.5};
+let grabbedDand=null, poutCD=0, palmCD=0, palmHold=0;
+// 防抖：连续N帧才算真正捏合/松开
+let pinchHoldFrames=0, openHoldFrames=0;
+const PINCH_CONFIRM=3;  // 需要连续3帧捏合才触发抓取
+const OPEN_CONFIRM=4;   // 需要连续4帧松开才触发放下（防误触）
+
+// ═══ 庆祝弹窗：双手合十 + 大部分蒲公英吹散 ═══
+let togetherHold=0;           // 双手合十持续帧数
+const TOGETHER_CONFIRM=15;    // 需要连续15帧(~0.5秒)合十才触发
+let celebrationShown=false;  // 是否已弹出过（防止重复弹）
+let celebPopupEl=null, celebBoxEl=null;
+
+function getBlownRatio(){
+  if(dands.length===0) return 0;
+  const blown = dands.filter(d=>d.state==='blown').length;
+  return blown / dands.length;  // 0~1，>0.6即大部分吹散
+}
+
+function showCelebration(){
+  if(celebrationShown) return;
+  celebrationShown=true;
+  celebPopupEl = document.getElementById('celebration-popup');
+  celebBoxEl = document.getElementById('celebration-box');
+  if(!celebPopupEl) return;
+  // 弹出动画
+  celebPopupEl.classList.add('show');
+}
+
+function hideCelebration(){
+  if(celebPopupEl){
+    celebPopupEl.classList.remove('show');
+    setTimeout(()=>{ celebrationShown=false; }, 600);
+  }
+}
+
+function replayCelebration(){
+  hideCelebration();
+  setTimeout(()=>{
+    resetAll();
+    showAct('🌿 新的开始！');
+    togetherHold=0;
+  }, 300);
+}
+
+function projDand(dand){
+  const p=dand.g.position.clone(); p.y+=dand.headY; p.project(cam);
+  return{sx:(p.x+1)/2, sy:(1-p.y)/2};
+}
+
+function interact(){
+  // 合十状态下不要触发捏合/张手/抓取逻辑
+  // 否则用户双手合十时第一只手的捏合会被误识别
+  if(HS.handsTogether){
+    HS.prevPinch=HS.pinch;
+    pinchHoldFrames=0; openHoldFrames=0;  // 重置防抖计数
+    return;
+  }
+
+  // 防抖计数
+  if(HS.pinch){ pinchHoldFrames++; openHoldFrames=0; }
+  else         { openHoldFrames++;  pinchHoldFrames=0; }
+
+  const pinchStart  = HS.pinch  && !HS.prevPinch;   // 原始边沿（用于内部判断）
+  const confirmedPinch = (pinchHoldFrames===PINCH_CONFIRM);  // 连续N帧确认捏合
+  const confirmedOpen  = (openHoldFrames===OPEN_CONFIRM);    // 连续N帧确认松开
+
+  // ① 确认捏合：抓取最近蒲公英，放大居中
+  if(confirmedPinch){
+    if(!grabbedDand){
+      const hx=1-HS.px, hy=HS.py;
+      let best=null, bd=0.30;
+      dands.forEach(d=>{
+        if(d.state==='blown') return;
+        const sc=projDand(d);
+        const dist=Math.hypot(sc.sx-hx, sc.sy-hy);
+        if(dist<bd){ bd=dist; best=d; }
+      });
+      if(best){
+        grabbedDand=best; best.state='grabbed';
+        showFocus(best);
+        showAct('🌼 抓住了！');
+      } else {
+        showAct('👌 捏合中…');
+      }
+    }
+  }
+
+  // ② 确认松开：放下（不碎裂！），取消放大
+  if(confirmedOpen){
+    if(grabbedDand){
+      const d=grabbedDand; grabbedDand=null;
+      releaseFocus();
+      // 放下：回到idle，让蒲公英留在原地（已跟手移动过）
+      d.state='idle';
+      showAct('✋ 放下了');
+    }
+  }
+
+  // ③ 捏合中嘟嘴：在聚焦视图内吹散（不立刻关闭聚焦层，等种子消散后自动关）
+  if(HS.pinch && grabbedDand && FS.pout && poutCD===0){
+    const d=grabbedDand; grabbedDand=null;
+    // 不调releaseFocus——保持模糊背景，在聚焦视图内飞散种子
+    blowDandInFocus(d);
+    showAct('💨 吹散种子~'); poutCD=70;
+  }
+
+  // ④ 移动已抓蒲公英（跟随手指位置）
+  if(grabbedDand && HS.pinch){
+    const ray=new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((1-HS.px)*2-1, -HS.py*2+1), cam);
+    const pt=new THREE.Vector3(); ray.ray.at(16,pt);
+    pt.y=Math.max(pt.y,-2);
+    gsap.to(grabbedDand.g.position,{x:pt.x,y:pt.y-grabbedDand.headY,z:pt.z,
+      duration:.1,ease:'power2.out',overwrite:true});
+  }
+
+  // ⑤ 张手复原（连续15帧 + 100帧冷却）
+  if(HS.palm && HS.detected){ palmHold++; }else{ palmHold=0; }
+  if(palmHold>=15 && palmCD===0){
+    resetAll(); showAct('🌿 全部复原！'); palmCD=100; palmHold=0;
+  }
+
+  // ⑥ 无捏合时嘟嘴区域吹散
+  if(!HS.pinch && !grabbedDand && FS.pout && poutCD===0){
+    const lx=1-FS.lx, ly=FS.ly, R=.30; let cnt=0;
+    dands.forEach(d=>{
+      if(d.state==='blown') return;
+      const sc=projDand(d);
+      if(Math.hypot(sc.sx-lx,sc.sy-ly)<R){
+        blowDand(d,new THREE.Vector3((sc.sx-lx)*2.5,.8+Math.random()*.4,-.4+Math.random()*.2));
+        cnt++;
+      }
+    });
+    if(cnt>0){ showAct('💨 吹散一片~'); poutCD=42; }
+  }
+
+  if(poutCD>0) poutCD--;
+  if(palmCD>0) palmCD--;
+
+  // ⑦ 双手合十 + 大部分蒲公英已吹散 → 弹出庆祝框
+  // 注意：不依赖 HS.pinch，因为合十时第一只手可能也略微捏合
+  // 改为：只要两只手都入镜且掌心距离<0.28，就累计
+  if(HS.handsTogether){
+    togetherHold++;
+  } else {
+    togetherHold=0;
+  }
+  const blownPct = getBlownRatio();
+  // 条件：持续合十25帧 + 超过60%蒲公英已吹散 + 尚未弹过
+  if(togetherHold>=TOGETHER_CONFIRM && blownPct>=0.6 && !celebrationShown){
+    console.log(`[庆祝] 触发! 合十帧:${togetherHold}/${TOGETHER_CONFIRM} 吹散比:${(blownPct*100).toFixed(0)}%`);
+    showCelebration();
+  }
+
+  HS.prevPinch=HS.pinch;
+}
+
+// ─── HUD ───
+function setHud(dotId,txtId,state,txt){
+  const d=document.getElementById(dotId);
+  d.className='hd'+(state<0?'':state>0?' act':' ok');
+  document.getElementById(txtId).textContent=txt;
+}
+function updateHud(){
+  setHud('hd-hand','ht-hand',HS.detected?0:-1,HS.detected?'手部✓':'手部');
+  setHud('hd-pinch','ht-pinch',HS.pinch?1:0,
+    HS.pinch?`捏✓${(HS.dist*100).toFixed(0)}`:`未捏 ${(HS.dist*100).toFixed(0)}`);
+  setHud('hd-palm','ht-palm',HS.palm?1:0,HS.palm?`张开(${palmHold})`:'未张');
+  setHud('hd-together','ht-together',HS.handsTogether?1:0,
+    HS.handsTogether?`🙏${togetherHold}/${TOGETHER_CONFIRM}`:`合十`);
+  setHud('hd-face','ht-face',FS.detected?0:-1,FS.detected?'面部✓':'面部');
+  setHud('hd-pout','ht-pout',FS.pout?1:0,FS.pout?'嘟嘴✓':`嘴${(FS.ratio*100).toFixed(0)}`);
+  const bpct = getBlownRatio();
+  setHud('hd-blown','ht-blown',bpct>=0.6?1:(bpct>0.3?-1:0),
+    `吹散${(bpct*100).toFixed(0)}%`);
+}
+
+let _atTimer=null;
+function showAct(txt){
+  const el=document.getElementById('atxt');
+  el.textContent=txt; gsap.killTweensOf(el); gsap.to(el,{opacity:1,duration:.15});
+  clearTimeout(_atTimer); _atTimer=setTimeout(()=>gsap.to(el,{opacity:0,duration:.8}),1800);
+}
+
+// ═══════════════════════════════════
+//  主渲染循环
+// ═══════════════════════════════════
+const clock=new THREE.Clock(); let T=0;
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=clock.getDelta(); T+=dt;
+  dands.forEach(d=>{
+    if(d.state==='blown'||d.state==='grabbed') return;
+    // 风吹摇摆：正弦振荡 + 持续风偏（固定风向+强度）
+    const windLean = CFG.windStrength * 0.025;  // 持续风力导致的倾斜
+    d.g.rotation.z = Math.sin(T*d.spd+d.phase)*d.amp + windLean;
+    d.g.rotation.x = Math.cos(T*d.spd*.6+d.phase)*d.amp*.5 + windLean*.4;
+    // 轻微的Y轴旋转（随风左右摆动）
+    d.g.rotation.y = Math.sin(T*d.spd*.35+d.phase*1.7)*d.amp*.3 + Math.sin(T*.12+d.phase)*windLean*.2;
+  });
+  for(let i=flyQ.length-1;i>=0;i--){
+    const f=flyQ[i]; f.life++;
+    const t=f.life/f.maxLife;
+    f.vel.y -= .00016;  // 更轻的重力，飘得更久
+    f.vel.x += CFG.windStrength*.0012;  // 固定强风力
+    f.vel.x += (Math.random()-.5)*.0010;  // 随机扰动
+    f.vel.z += (Math.random()-.5)*.0007;
+    f.mesh.position.x+=f.vel.x;
+    f.mesh.position.y+=f.vel.y;
+    f.mesh.position.z+=f.vel.z;
+    // 更快的翻滚，视觉更动感
+    f.mesh.rotation.x+=.035; f.mesh.rotation.z+=.028;
+    f.mat.opacity=Math.max(0,(1-t*t)*.95);  // 非线性淡出，后期才消失
+    if(f.life>=f.maxLife||f.mesh.position.y<-16){
+      if(f.mesh.parent===scene) scene.remove(f.mesh);
+      flyQ.splice(i,1);
+    }
+  }
+  interact(); updateHud(); renderer.render(scene,cam);
+}
+window.addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  MediaPipe 检测系统
+//  策略：优先 tasks-vision 0.10.x (新版稳定)
+//         → 回退旧版 @mediapipe/hands + face_mesh
+//         → 全失败时键盘操作
+// ═══════════════════════════════════════════════════════════════════
+const video  = document.getElementById('vid');
+const ovCvs  = document.getElementById('ov');
+const ov2d   = ovCvs.getContext('2d');
+
+const HAND_CONN=[
+  [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],[0,17]
+];
+
+function setSt(id,col,txt){
+  const sd=document.getElementById(id+'sd');
+  const st=document.getElementById(id+'st');
+  if(sd) sd.style.background=col;
+  if(st) st.textContent=txt;
+}
+
+function loadScript(src){
+  return new Promise((resolve,reject)=>{
+    if(document.querySelector(`script[src="${src}"]`)){resolve();return;}
+    const s=document.createElement('script');
+    s.src=src;
+    s.onload=()=>{console.log('[MP] ✓',src);resolve();};
+    s.onerror=(e)=>{console.warn('[MP] ✗',src);reject(new Error(src));};
+    document.head.appendChild(s);
+  });
+}
+
+// ─── 手部关键点处理（支持双手检测 + 双手合十判定）───
+function onHands(lmsList){
+  ov2d.clearRect(0,0,ovCvs.width,ovCvs.height);
+  if(!lmsList||lmsList.length===0){
+    HS.detected=false; HS.pinch=false; HS.palm=false; HS.handsTogether=false;
+    setSt('hand-','#aaa','未检测到手');
+    dbgSet('dbg-hand','手部: 未入画'); return;
+  }
+  HS.detected=true;
+
+  // 绘制所有手的骨架
+  const w=ovCvs.width, h=ovCvs.height;
+  lmsList.forEach((lm, idx)=>{
+    ov2d.strokeStyle = idx===0?'rgba(160,230,245,.8)':'rgba(255,200,160,.75)';
+    ov2d.lineWidth=1.8;
+    HAND_CONN.forEach(([a,b])=>{
+      ov2d.beginPath();
+      ov2d.moveTo(lm[a].x*w, lm[a].y*h);
+      ov2d.lineTo(lm[b].x*w, lm[b].y*h);
+      ov2d.stroke();
+    });
+    ov2d.fillStyle='rgba(255,200,200,.95)';
+    lm.forEach(p=>{ov2d.beginPath();ov2d.arc(p.x*w,p.y*h,2.5,0,Math.PI*2);ov2d.fill();});
+  });
+
+  // ═══ 双手合十判定 ═══
+  // 用两只手掌心（中指MCP点9）的距离判断，比手腕更准
+  HS.handsTogether = false;
+  if(lmsList.length >= 2){
+    const p0 = lmsList[0][9], p1 = lmsList[1][9]; // 掌心位置
+    const dist = Math.hypot(p0.x-p1.x, p0.y-p1.y);
+    // 阈值放宽到0.35：合十时通常10~25%，留足余量
+    // 同时检查两只手都"张开"（不是互相握拳）→ 避免单手握拳被误判
+    const isHandOpen=(lm)=>{
+      const tips=[8,12,16,20], mcps=[6,10,14,18];
+      let o=0; tips.forEach((t,i)=>{ if(lm[t].y<lm[mcps[i]].y-0.02) o++; });
+      return o>=3;
+    };
+    const bothOpen = isHandOpen(lmsList[0]) && isHandOpen(lmsList[1]);
+    HS.handsTogether = dist < 0.35 && bothOpen;
+
+    if(HS.handsTogether){
+      ov2d.strokeStyle='rgba(255,140,180,.85)'; ov2d.lineWidth=2.5;
+      ov2d.beginPath();
+      ov2d.moveTo(p0.x*w,p0.y*h); ov2d.lineTo(p1.x*w,p1.y*h);
+      ov2d.stroke();
+      const mx=(p0.x+p1.x)/2*w, my=(p0.y+p1.y)/2*h;
+      ov2d.strokeStyle='rgba(255,160,200,.45)'; ov2d.lineWidth=3;
+      ov2d.beginPath(); ov2d.arc(mx,my,18,0,Math.PI*2); ov2d.stroke();
+    }
+  }
+
+  // ═══ 第一只手：捏合 / 张手检测（保持原有逻辑不变）═══
+  const lm=lmsList[0];
+
+  // 捏合距离
+  const th=lm[4], ix=lm[8];
+  HS.dist = Math.hypot(th.x-ix.x, th.y-ix.y);
+  HS.pinch = HS.dist < CFG.pinchThresh;
+  HS.px = (th.x+ix.x)/2; HS.py=(th.y+ix.y)/2;
+
+  // 画捏合线
+  ov2d.strokeStyle = HS.pinch?'rgba(255,80,140,.95)':'rgba(80,210,230,.8)';
+  ov2d.lineWidth=2.8;
+  ov2d.beginPath();
+  ov2d.moveTo(th.x*w,th.y*h); ov2d.lineTo(ix.x*w,ix.y*h); ov2d.stroke();
+  if(HS.pinch){
+    ov2d.strokeStyle='rgba(255,80,140,.55)'; ov2d.lineWidth=2;
+    ov2d.beginPath();
+    ov2d.arc((th.x+ix.x)/2*w,(th.y+ix.y)/2*h,14,0,Math.PI*2); ov2d.stroke();
+  }
+
+  // 张手检测
+  const tips=[4,8,12,16,20], mcps=[3,6,10,14,18];
+  let oc=0;
+  tips.forEach((t,i)=>{ if(lm[t].y<lm[mcps[i]].y-0.035) oc++; });
+  HS.palm = oc>=4 && !HS.pinch;
+
+  setSt('hand-', HS.handsTogether?'#ff9eb5':(HS.pinch?'#ff9eb5':(HS.palm?'#b0e8d0':'#7de8a0')),
+    HS.handsTogether?`🙏合十✓`:(
+    HS.pinch?`✊捏 d=${(HS.dist*100).toFixed(0)}`:(HS.palm?`🖐张(${oc})`:`✋ ${lm.length}pt ${lmsList.length}手`)));
+  dbgSet('dbg-hand', `手部: ✓ ${lmsList.length}手 ${HS.handsTogether?'🙏':''}`);
+  dbgSet('dbg-pinch', `捏合: ${(HS.dist*100).toFixed(1)} 阈${(CFG.pinchThresh*100).toFixed(0)} ${HS.pinch?'✊':'✋'}`);
+  dbgSet('dbg-palm',  `张手: ${oc}/5 ${HS.palm?'🖐':''}`);
+  dbgSet('dbg-together', `合十: ${lmsList.length}手 ${HS.handsTogether?'✓('+togetherHold+'帧)':'✗'} 阈0.35`);
+  dbgSet('dbg-blown', `吹散比: ${(getBlownRatio()*100).toFixed(0)}% (需≥60%)`);
+  // 合十调试：显示检测到的手数、距离、吹散比例
+  if(lmsList.length >= 2){
+    const p0=lmsList[0][9], p1=lmsList[1][9];
+    const d=Math.hypot(p0.x-p1.x,p0.y-p1.y);
+    console.log(`[合十] 手数:${lmsList.length} 掌心距:${(d*100).toFixed(1)}% 合十:${HS.handsTogether?'✓':'✗'} 吹散比:${(getBlownRatio()*100).toFixed(0)}%`);
+  }
+}
+
+// ─── 面部关键点处理 ───
+// 嘟嘴O型判定 v2 — 动态基准 + 宽松双条件
+//
+// 核心思路：不再依赖绝对阈值，而是以"初始闭嘴状态"为动态基准
+//   撅嘴特征：嘴角向内收窄(嘴宽缩小) + 嘴唇有厚度(不是扁平张嘴)
+// MediaPipe FaceMesh 关键点：
+//   上唇中:13  下唇中:14  左嘴角:61  右嘴角:291
+//   左眼外:33  右眼外:263（脸宽基准）
+let faceBaseMFR = null;  // 动态基准：初始嘴宽/脸宽比
+const FACE_BASE_FRAMES = 60;  // 前2秒用于采集基准
+
+function onFace(lmsList){
+  if(!lmsList||lmsList.length===0){
+    FS.detected=false; FS.pout=false;
+    setSt('face-','#aaa','未检测到面部');
+    dbgSet('dbg-face','面部: 未入画'); return;
+  }
+  FS.detected=true;
+  const lm=lmsList[0];
+
+  const up=lm[13], dn=lm[14], lt=lm[61], rt=lm[291];
+  const eyeL=lm[33], eyeR=lm[263];
+  if(!up||!dn||!lt||!rt||!eyeL||!eyeR){ FS.pout=false; return; }
+
+  const mh = Math.abs(dn.y - up.y);          // 嘴开合高度
+  const mw = Math.abs(rt.x - lt.x) + .0005;   // 嘴角宽度
+  const fw = Math.abs(eyeR.x - eyeL.x) + .0005; // 脸宽基准（两眼间距）
+
+  // 嘴宽/脸宽比：正常~0.40-0.50, 撅嘴~0.25-0.38, 张嘴~0.42-0.55(不变)
+  const mfr = mw / fw;
+
+  // 动态采集基准（前2秒取平均值）
+  if(faceBaseMFR === null){
+    faceBaseMFR = {sum:0, n:0};
+  }
+  if(faceBaseMFR.n < FACE_BASE_FRAMES){
+    faceBaseMFR.sum += mfr;
+    faceBaseMFR.n++;
+    FS.pout=false;
+    FS.ratio=0;
+    dbgSet('dbg-pout', `采集中 ${faceBaseMFR.n}/${FACE_BASE_FRAMES}`);
+    setSt('face-', '#b0c8e0', '😶 校准中…');
+    return;
+  }
+  if(faceBaseMFR.n === FACE_BASE_FRAMES){
+    faceBaseMFR.base = faceBaseMFR.sum / faceBaseMFR.n;
+    faceBaseMFR.n++; // 标记完成
+    console.log(`[嘟嘴] 基准嘴宽/脸宽=${(faceBaseMFR.base*100).toFixed(1)}%`);
+  }
+
+  const baseMFR = faceBaseMFR.base;
+
+  // ══════════════════════════════════════
+  //  双条件嘟嘴判定
+  //  ══════════════════════════════════════
+  //
+  // 条件A — 嘴角收窄率：
+  //   当前嘴宽 相对于 基准嘴宽 缩小的比例
+  //   撅嘴时通常收缩 15%~35%，张嘴时几乎不缩(<5%)
+  //   → 收窄率 > 12% 即认为有收窄趋势
+  //
+  const narrowRate = 1 - (mfr / baseMFR);  // 正数=收窄, 负数=变宽
+  const condA_narrow = narrowRate > CFG.poutThresh;  // poutThresh现在表示"最小收窄率"
+
+  // 条件B — 嘴唇厚度（排除完全闭嘴或微张）：
+  //   撅嘴时嘴唇会鼓起来，mh会有一定值
+  //   同时要求 mh/mw 不能太大（那是张嘴）
+  //   → 只要 mh > 最小厚度 即可（配合条件A已排除张嘴）
+  const condB_thick = mh > 0.006;  // 很低的门槛，只要有嘴唇厚度
+
+  // 综合判定：收窄 + 有厚度 = 撅嘴/嘟嘴
+  FS.pout = condA_narrow && condB_thick;
+  FS.ratio = narrowRate * 100;  // HUD显示收窄率百分比
+  FS.lx = (up.x+dn.x)/2; FS.ly = (up.y+dn.y)/2;
+
+  // 状态显示
+  setSt('face-', FS.pout?'#ff9eb5':'#7de8a0',
+    FS.pout?`💨撅嘴✓ ${(FS.ratio).toFixed(0)}%`:`😶 ${Math.max(0,FS.ratio).toFixed(0)}%`);
+  dbgSet('dbg-face', `面部: ✓ ${lm.length}pt`);
+  dbgSet('dbg-pout',
+    `收窄${(narrowRate*100).toFixed(0)}%>${(CFG.poutThresh*100).toFixed(0)}%` +
+    ` h=${(mh*100).toFixed(1)} [base:${(baseMFR*100).toFixed(0)}%]` +
+    (condA_narrow?' ✓A':'') + (condB_thick?' ✓B':'') +
+    (FS.pout?' 💨':'')
+  );
+}
+
+// ─── 主启动流程 ───
+async function startCamera(){
+  // Step 1: 获取摄像头
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{width:320,height:240,facingMode:'user',frameRate:{ideal:30}},audio:false
+    });
+  }catch(e){
+    setSt('cam-','#e08080','摄像头被拒绝'); dbgSet('dbg-cam','✗ '+e.message);
+    return;
+  }
+  video.srcObject = stream;
+  await new Promise(r=>{ video.onloadedmetadata=r; });
+  await video.play().catch(()=>{});
+  ovCvs.width=video.videoWidth; ovCvs.height=video.videoHeight;
+  setSt('cam-','#7de8a0','摄像头已连接');
+  document.getElementById('hd-cam').className='hd ok';
+  document.getElementById('ht-cam').textContent='摄像头✓';
+  dbgSet('dbg-cam', `摄像头: ${video.videoWidth}×${video.videoHeight}`);
+
+  // Step 2: 尝试 tasks-vision 新版
+  const TASKS_CDNS = [
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js',
+    'https://unpkg.com/@mediapipe/tasks-vision@0.10.3/vision_bundle.js',
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.js',
+  ];
+  let tasksOk = false;
+  for(const src of TASKS_CDNS){
+    try{
+      setSt('hand-','#f0d870','加载tasks-vision…');
+      await loadScript(src);
+      // tasks-vision 会把 HandLandmarker, FilesetResolver 挂到 window
+      if(window.HandLandmarker && window.FilesetResolver){ tasksOk=true; break; }
+    }catch(e){ console.warn('[tasks-vision] fail:',src); }
+  }
+
+  if(tasksOk){
+    await runTasksVision();
+    return;
+  }
+
+  // Step 3: 回退旧版
+  console.log('[MP] tasks-vision不可用，尝试旧版…');
+  await runLegacyMP();
+}
+
+// ─── tasks-vision 0.10.x ───
+async function runTasksVision(){
+  try{
+    const FR=window.FilesetResolver, HL=window.HandLandmarker, FL=window.FaceLandmarker;
+    const WASM='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm';
+    setSt('hand-','#f0d870','下载WASM…');
+    const vision = await FR.forVision(WASM);
+
+    setSt('hand-','#f0d870','初始化HandLandmarker…');
+    const handL = await HL.createFromOptions(vision,{
+      baseOptions:{
+        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate:'GPU'
+      },
+      runningMode:'VIDEO', numHands:2,
+      minHandDetectionConfidence:.5, minHandPresenceConfidence:.5, minTrackingConfidence:.5
+    });
+    setSt('hand-','#7de8a0','手部模型就绪✓');
+
+    let faceL=null;
+    if(FL){
+      try{
+        setSt('face-','#f0d870','初始化FaceLandmarker…');
+        faceL = await FL.createFromOptions(vision,{
+          baseOptions:{
+            modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate:'GPU'
+          },
+          runningMode:'VIDEO', numFaces:1,
+          minFaceDetectionConfidence:.5, minFacePresenceConfidence:.5, minTrackingConfidence:.5
+        });
+        setSt('face-','#7de8a0','面部模型就绪✓');
+      }catch(e){ setSt('face-','#e08080','面部初始化失败'); console.warn(e); }
+    } else {
+      setSt('face-','#f0d080','FaceLandmarker不可用');
+    }
+
+    let lastTime=-1, fc=0;
+    function detect(){
+      requestAnimationFrame(detect);
+      if(video.readyState<2) return;
+      const now=performance.now();
+      if(video.currentTime===lastTime) return;
+      lastTime=video.currentTime; fc++;
+      // 每2帧检测一次手，每3帧检测一次面部
+      if(fc%2===0){
+        try{
+          const r=handL.detectForVideo(video,now);
+          onHands(r.landmarks);
+        }catch(e){ console.warn('hand detect err',e); }
+      }
+      if(fc%3===0 && faceL){
+        try{
+          const r=faceL.detectForVideo(video,now);
+          onFace(r.faceLandmarks);
+        }catch(e){ console.warn('face detect err',e); }
+      }
+    }
+    detect();
+  }catch(e){
+    console.error('[tasks-vision] 失败:',e);
+    setSt('hand-','#e08080','tasks-vision失败，切换旧版…');
+    await runLegacyMP();
+  }
+}
+
+// ─── 旧版 @mediapipe/hands + face_mesh ───
+async function runLegacyMP(){
+  const CDNS=[
+    {h:'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js',
+     hw:'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/',
+     f:'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js',
+     fw:'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/'},
+    {h:'https://unpkg.com/@mediapipe/hands@0.4.1646424915/hands.js',
+     hw:'https://unpkg.com/@mediapipe/hands@0.4.1646424915/',
+     f:'https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js',
+     fw:'https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/'},
+  ];
+
+  let ok=false, cfg=null;
+  for(const c of CDNS){
+    try{
+      setSt('hand-','#f0d870','加载legacy手部JS…');
+      if(!window.Hands) await loadScript(c.h);
+      setSt('face-','#f0d870','加载legacy面部JS…');
+      if(!window.FaceMesh) await loadScript(c.f);
+      if(window.Hands){ ok=true; cfg=c; break; }
+    }catch(e){ console.warn('[legacy]',e); }
+  }
+
+  if(!ok||!window.Hands){
+    setSt('hand-','#e08080','MediaPipe全部加载失败');
+    setSt('face-','#e08080','请检查网络连接');
+    console.error('[MP] 所有CDN均失败');
+    return;
+  }
+
+  // 等待类注册
+  const waitCls=(name,ms=3000)=>new Promise((res,rej)=>{
+    if(window[name]){res();return;}
+    const t0=Date.now();
+    const iv=setInterval(()=>{
+      if(window[name]){clearInterval(iv);res();}
+      else if(Date.now()-t0>ms){clearInterval(iv);rej(new Error(name+' timeout'));}
+    },80);
+  });
+  try{ await waitCls('Hands'); await waitCls('FaceMesh'); }
+  catch(e){ setSt('hand-','#e08080','类注册超时'); return; }
+
+  setSt('hand-','#f0d870','初始化Hands…');
+  const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
+  hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.5,minTrackingConfidence:.45});
+  hands.onResults(r=>onHands(r.multiHandLandmarks));
+
+  setSt('face-','#f0d870','初始化FaceMesh…');
+  const face=new FaceMesh({locateFile:f=>`${cfg.fw}${f}`});
+  face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.45});
+  face.onResults(r=>onFace(r.multiFaceLandmarks));
+
+  // 预热：确保WASM下载完毕
+  setSt('hand-','#f0d870','预热手部模型…');
+  try{ await hands.send({image:video}); setSt('hand-','#7de8a0','手部就绪✓'); }
+  catch(e){ setSt('hand-','#f0d080','手部预热失败'); }
+  setSt('face-','#f0d870','预热面部模型…');
+  try{ await face.send({image:video}); setSt('face-','#7de8a0','面部就绪✓'); }
+  catch(e){ setSt('face-','#f0d080','面部预热失败'); }
+
+  // 驱动循环
+  let fc=0;
+  async function mpTick(){
+    fc++;
+    if(video.readyState>=2){
+      if(fc%2===0){ try{await hands.send({image:video});}catch(e){} }
+      if(fc%3===0){ try{await face.send({image:video});}catch(e){} }
+    }
+    requestAnimationFrame(mpTick);
+  }
+  mpTick();
+}
+
+// ─── 键盘备用操作 ───
+function setupKeyboard(){
+  let kGrab=null;
+  document.addEventListener('keydown',e=>{
+    const k=e.key.toLowerCase();
+    if(k==='b'){
+      // B = 吹散最近一株
+      const d=dands.find(x=>x.state==='idle');
+      if(d){ blowDand(d,null); showAct('💨 B:吹散'); }
+    }
+    if(k==='r'){ resetAll(); showAct('🌿 R:复原'); }
+    if(k==='g'){
+      if(!kGrab){
+        kGrab=dands.find(x=>x.state==='idle');
+        if(kGrab){
+          kGrab.state='grabbed'; showFocus(kGrab); showAct('👌 G:抓取');
+          grabbedDand=kGrab;
+        }
+      } else {
+        // G再按 = 在聚焦视图内吹散
+        blowDandInFocus(kGrab);
+        kGrab=null; grabbedDand=null; showAct('💨 G:吹散');
+      }
+    }
+    if(k==='p'){
+      // P = 放下（不碎裂）
+      if(kGrab){ releaseFocus(); kGrab.state='idle'; kGrab=null; grabbedDand=null; showAct('✋ P:放下'); }
+    }
+  });
+}
+
+// ═══════════════════════════════════
+//  帧率监控（调试用）
+// ═══════════════════════════════════
+let _fpsLast=performance.now(), _fpsCount=0;
+function trackFPS(){
+  _fpsCount++;
+  const now=performance.now();
+  if(now-_fpsLast>1000){
+    dbgSet('dbg-fps',`帧率: ${_fpsCount} fps`);
+    _fpsCount=0; _fpsLast=now;
+  }
+  requestAnimationFrame(trackFPS);
+}
+
+// ═══════════════════════════════════
+//  启动入口
+// ═══════════════════════════════════
+async function main(){
+  bindPanel();
+  initClouds();
+  buildField();
+  animate();
+  trackFPS();
+  setupKeyboard();
+  // 绑定庆祝弹窗"再玩一次"按钮
+  const replayBtn = document.getElementById('btn-replay');
+  if(replayBtn) replayBtn.addEventListener('click', replayCelebration);
+  await startCamera();
+  // 隐藏加载页
+  setTimeout(()=>{
+    const l=document.getElementById('loader');
+    l.classList.add('bye');
+    setTimeout(()=>l.style.display='none',1000);
+  },1500);
+}
+main();
+</script>
+</body>
+</html>
