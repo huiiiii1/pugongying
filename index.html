@@ -145,6 +145,8 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
   </svg>
   <div id="ltxt">蒲公英梦境加载中…</div>
   <div class="lbar"><div class="lfill"></div></div>
+  <div id="load-detail" style="color:#7aabcd;font-size:11.5px;margin-top:10px;min-height:20px;"></div>
+  <button id="btn-retry" style="margin-top:14px;padding:8px 28px;border:none;border-radius:22px;background:linear-gradient(135deg,#7ecce8,#a0d8f0);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:none;box-shadow:0 3px 14px rgba(100,190,230,.4);letter-spacing:.06em;transition:all .25s ease;" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 5px 20px rgba(100,190,230,.55)'" onmouseout="this.style.transform='';this.style.boxShadow='0 3px 14px rgba(100,190,230,.4)'">🔄 重新加载</button>
 </div>
 
 <div id="sky"></div>
@@ -1019,15 +1021,90 @@ function setSt(id,col,txt){
   if(st) st.textContent=txt;
 }
 
-function loadScript(src){
-  return new Promise((resolve,reject)=>{
-    if(document.querySelector(`script[src="${src}"]`)){resolve();return;}
-    const s=document.createElement('script');
-    s.src=src;
-    s.onload=()=>{console.log('[MP] ✓',src);resolve();};
-    s.onerror=(e)=>{console.warn('[MP] ✗',src);reject(new Error(src));};
-    document.head.appendChild(s);
+// ═══ 加载详情提示 ═══
+function updateLoadDetail(txt) {
+  const el = document.getElementById('load-detail');
+  if (el) el.textContent = txt;
+  console.log('[加载]', txt);
+}
+
+// ═══ 增强版脚本加载（带重试 + 多CDN）═══
+function loadScriptWithRetry(srcList, maxRetry = 2) {
+  return new Promise((resolve, reject) => {
+    let tryCount = 0;
+    let cdnIdx = 0;
+
+    function tryNextCDN() {
+      if (cdnIdx >= srcList.length) {
+        reject(new Error('所有CDN均失败'));
+        return;
+      }
+
+      const src = srcList[cdnIdx];
+      // 检查是否已加载
+      if (document.querySelector(`script[src="${src}"]`)) {
+        updateLoadDetail(`✓ 已加载: ${src.split('/').pop()}`);
+        cdnIdx++;
+        resolve();
+        return;
+      }
+
+      let retryCount = 0;
+
+      function loadWithRetry() {
+        tryCount++;
+        updateLoadDetail(`正在加载 (${cdnIdx + 1}/${srcList.length}): ${src.split('/').pop()} [尝试 ${retryCount + 1}/${maxRetry + 1}]`);
+
+        const s = document.createElement('script');
+        s.src = src;
+        s.crossOrigin = 'anonymous';  // 允许跨域（避免CORS问题）
+
+        const timeout = setTimeout(() => {
+          updateLoadDetail(`✗ 超时: ${src.split('/').pop()}`);
+          s.remove();
+          if (retryCount < maxRetry) {
+            retryCount++;
+            setTimeout(loadWithRetry, 800);  // 等待800ms重试
+          } else {
+            cdnIdx++;
+            tryNextCDN();
+          }
+        }, 12000);  // 12秒超时
+
+        s.onload = () => {
+          clearTimeout(timeout);
+          updateLoadDetail(`✓ 成功加载: ${src.split('/').pop()}`);
+          console.log('[MP] ✓', src);
+          resolve();
+        };
+
+        s.onerror = () => {
+          clearTimeout(timeout);
+          updateLoadDetail(`✗ 加载失败: ${src.split('/').pop()}`);
+          console.warn('[MP] ✗', src);
+          s.remove();
+          if (retryCount < maxRetry) {
+            retryCount++;
+            setTimeout(loadWithRetry, 800);
+          } else {
+            cdnIdx++;
+            tryNextCDN();
+          }
+        };
+
+        document.head.appendChild(s);
+      }
+
+      loadWithRetry();
+    }
+
+    tryNextCDN();
   });
+}
+
+// 保持原有 loadScript 兼容
+function loadScript(src){
+  return loadScriptWithRetry([src], 1);
 }
 
 // ─── 手部关键点处理（支持双手检测 + 双手合十判定）───
@@ -1216,11 +1293,15 @@ async function startCamera(){
   // Step 1: 获取摄像头
   let stream;
   try{
+    updateLoadDetail('正在请求摄像头权限…');
     stream = await navigator.mediaDevices.getUserMedia({
       video:{width:320,height:240,facingMode:'user',frameRate:{ideal:30}},audio:false
     });
   }catch(e){
-    setSt('cam-','#e08080','摄像头被拒绝'); dbgSet('dbg-cam','✗ '+e.message);
+    setSt('cam-','#e08080','摄像头被拒绝');
+    dbgSet('dbg-cam','✗ '+e.message);
+    updateLoadDetail('✗ 摄像头权限被拒绝，请允许摄像头访问');
+    document.getElementById('btn-retry').style.display='inline-block';
     return;
   }
   video.srcObject = stream;
@@ -1231,21 +1312,37 @@ async function startCamera(){
   document.getElementById('hd-cam').className='hd ok';
   document.getElementById('ht-cam').textContent='摄像头✓';
   dbgSet('dbg-cam', `摄像头: ${video.videoWidth}×${video.videoHeight}`);
+  updateLoadDetail('✓ 摄像头已就绪');
 
-  // Step 2: 尝试 tasks-vision 新版
+  // Step 2: 尝试 tasks-vision 新版（多个国内可用CDN）
   const TASKS_CDNS = [
+    // 国内CDN（推荐优先）
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.js',
+    'https://unpkg.com/@mediapipe/tasks-vision@0.10.8/vision_bundle.js',
+    // 备用CDN
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js',
     'https://unpkg.com/@mediapipe/tasks-vision@0.10.3/vision_bundle.js',
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.js',
+    // 最终备用
+    'https://storage.googleapis.com/mediapipe-cdn/tasks-vision@0.10.8/vision_bundle.js',
   ];
   let tasksOk = false;
-  for(const src of TASKS_CDNS){
+
+  for(let i=0; i<TASKS_CDNS.length; i++){
+    const src = TASKS_CDNS[i];
     try{
-      setSt('hand-','#f0d870','加载tasks-vision…');
+      setSt('hand-','#f0d870',`加载tasks-vision (${i+1}/${TASKS_CDNS.length})…`);
+      updateLoadDetail(`正在加载 tasks-vision (${i+1}/${TASKS_CDNS.length}): ${src.split('/').pop()}`);
       await loadScript(src);
       // tasks-vision 会把 HandLandmarker, FilesetResolver 挂到 window
-      if(window.HandLandmarker && window.FilesetResolver){ tasksOk=true; break; }
-    }catch(e){ console.warn('[tasks-vision] fail:',src); }
+      if(window.HandLandmarker && window.FilesetResolver){
+        tasksOk=true;
+        updateLoadDetail('✓ tasks-vision 加载成功');
+        break;
+      }
+    }catch(e){
+      console.warn('[tasks-vision] fail:',src);
+      updateLoadDetail(`✗ CDN ${i+1} 失败，尝试下一个…`);
+    }
   }
 
   if(tasksOk){
@@ -1253,8 +1350,9 @@ async function startCamera(){
     return;
   }
 
-  // Step 3: 回退旧版
+  // Step 3: 回退旧版（增加更多CDN备用）
   console.log('[MP] tasks-vision不可用，尝试旧版…');
+  updateLoadDetail('tasks-vision不可用，尝试旧版 @mediapipe/hands…');
   await runLegacyMP();
 }
 
@@ -1262,38 +1360,116 @@ async function startCamera(){
 async function runTasksVision(){
   try{
     const FR=window.FilesetResolver, HL=window.HandLandmarker, FL=window.FaceLandmarker;
-    const WASM='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm';
-    setSt('hand-','#f0d870','下载WASM…');
-    const vision = await FR.forVision(WASM);
+    // 多个WASM CDN备用
+    const WASM_CDNS = [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm',
+      'https://unpkg.com/@mediapipe/tasks-vision@0.10.8/wasm',
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm',
+      'https://storage.googleapis.com/mediapipe-cdn/tasks-vision/wasm',
+    ];
 
-    setSt('hand-','#f0d870','初始化HandLandmarker…');
-    const handL = await HL.createFromOptions(vision,{
-      baseOptions:{
-        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-        delegate:'GPU'
-      },
-      runningMode:'VIDEO', numHands:2,
-      minHandDetectionConfidence:.5, minHandPresenceConfidence:.5, minTrackingConfidence:.5
-    });
+    let vision = null;
+    for(let i=0; i<WASM_CDNS.length; i++){
+      try{
+        setSt('hand-','#f0d870',`下载WASM (${i+1}/${WASM_CDNS.length})…`);
+        updateLoadDetail(`正在加载 WASM (${i+1}/${WASM_CDNS.length})…`);
+        vision = await Promise.race([
+          FR.forVision(WASM_CDNS[i]),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('WASM timeout')), 20000)
+        ]);
+        updateLoadDetail(`✓ WASM 加载成功 (${i+1}/${WASM_CDNS.length})`);
+        break;
+      }catch(e){
+        console.warn('[WASM] fail:', WASM_CDNS[i], e);
+        updateLoadDetail(`✗ WASM CDN ${i+1} 失败，尝试下一个…`);
+        if(i === WASM_CDNS.length-1){
+          throw new Error('所有WASM CDN均失败');
+        }
+      }
+    }
+
+
+    // 多个手部模型CDN备用
+    const HAND_MODELS = [
+      'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      'https://cdn.jsdelivr.net/gh/google/mediapipe/raw/master/models/hand_landmarker/hand_landmarker.task',
+      'https://unpkg.com/@mediapipe/hand-landmarker/hand_landmarker.task',
+    ];
+
+    let handL = null;
+    for(let i=0; i<HAND_MODELS.length; i++){
+      try{
+        setSt('hand-','#f0d870',`初始化HandLandmarker (${i+1}/${HAND_MODELS.length})…`);
+        updateLoadDetail(`正在加载手部模型 (${i+1}/${HAND_MODELS.length})…`);
+        handL = await Promise.race([
+          HL.createFromOptions(vision,{
+            baseOptions:{
+              modelAssetPath:HAND_MODELS[i],
+              delegate:'GPU'
+            },
+            runningMode:'VIDEO', numHands:2,
+            minHandDetectionConfidence:.5, minHandPresenceConfidence:.5, minTrackingConfidence:.5
+          }),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('Hand timeout')), 25000)
+        ]);
+        updateLoadDetail(`✓ 手部模型加载成功 (${i+1}/${HAND_MODELS.length})`);
+        break;
+      }catch(e){
+        console.warn('[Hand] fail:', HAND_MODELS[i], e);
+        updateLoadDetail(`✗ 手部模型 CDN ${i+1} 失败${i<HAND_MODELS.length-1?'，尝试下一个…':''}`);
+        if(i === HAND_MODELS.length-1){
+          throw new Error('所有手部模型CDN均失败');
+        }
+      }
+    }
+
     setSt('hand-','#7de8a0','手部模型就绪✓');
 
     let faceL=null;
     if(FL){
-      try{
-        setSt('face-','#f0d870','初始化FaceLandmarker…');
-        faceL = await FL.createFromOptions(vision,{
-          baseOptions:{
-            modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-            delegate:'GPU'
-          },
-          runningMode:'VIDEO', numFaces:1,
-          minFaceDetectionConfidence:.5, minFacePresenceConfidence:.5, minTrackingConfidence:.5
-        });
+      // 多个面部模型CDN备用
+      const FACE_MODELS = [
+        'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+        'https://cdn.jsdelivr.net/gh/google/mediapipe/raw/master/models/face_landmarker/face_landmarker.task',
+        'https://unpkg.com/@mediapipe/face-landmarker/face_landmarker.task',
+      ];
+
+      for(let i=0; i<FACE_MODELS.length; i++){
+        try{
+          setSt('face-','#f0d870',`初始化FaceLandmarker (${i+1}/${FACE_MODELS.length})…`);
+          updateLoadDetail(`正在加载面部模型 (${i+1}/${FACE_MODELS.length})…`);
+          faceL = await Promise.race([
+            FL.createFromOptions(vision,{
+              baseOptions:{
+                modelAssetPath:FACE_MODELS[i],
+                delegate:'GPU'
+              },
+              runningMode:'VIDEO', numFaces:1,
+              minFaceDetectionConfidence:.5, minFacePresenceConfidence:.5, minTrackingConfidence:.5
+            }),
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error('Face timeout')), 25000)
+          ]);
+          updateLoadDetail(`✓ 面部模型加载成功 (${i+1}/${FACE_MODELS.length})`);
+          break;
+        }catch(e){
+          console.warn('[Face] fail:', FACE_MODELS[i], e);
+          updateLoadDetail(`✗ 面部模型 CDN ${i+1} 失败${i<FACE_MODELS.length-1?'，尝试下一个…':''}`);
+          if(i === FACE_MODELS.length-1){
+            console.warn('面部模型全部失败，继续运行（无面部检测）');
+            setSt('face-','#f0d080','面部模型加载失败（可选）');
+            updateLoadDetail('⚠ 面部模型加载失败，手势检测仍可正常使用');
+          }
+        }
+      }
+      if(faceL){
         setSt('face-','#7de8a0','面部模型就绪✓');
-      }catch(e){ setSt('face-','#e08080','面部初始化失败'); console.warn(e); }
+      }
     } else {
-      setSt('face-','#f0d080','FaceLandmarker不可用');
+      setSt('face-','#e08080','FaceLandmarker不可用');
+      updateLoadDetail('⚠ FaceLandmarker不可用，仅手势检测');
     }
+
+    updateLoadDetail('✓ 所有模型加载完成，开始检测…');
 
     let lastTime=-1, fc=0;
     function detect(){
@@ -1352,6 +1528,8 @@ async function runLegacyMP(){
     setSt('hand-','#e08080','MediaPipe全部加载失败');
     setSt('face-','#e08080','请检查网络连接');
     console.error('[MP] 所有CDN均失败');
+    updateLoadDetail('✗ 所有CDN均失败，请检查网络连接后点击"重新加载"按钮');
+    document.getElementById('btn-retry').style.display='inline-block';
     return;
   }
 
@@ -1365,7 +1543,12 @@ async function runLegacyMP(){
     },80);
   });
   try{ await waitCls('Hands'); await waitCls('FaceMesh'); }
-  catch(e){ setSt('hand-','#e08080','类注册超时'); return; }
+  catch(e){ 
+    setSt('hand-','#e08080','类注册超时'); 
+    updateLoadDetail('✗ 类注册超时，请点击"重新加载"按钮重试');
+    document.getElementById('btn-retry').style.display='inline-block';
+    return; 
+  }
 
   setSt('hand-','#f0d870','初始化Hands…');
   const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
@@ -1456,6 +1639,21 @@ async function main(){
   // 绑定庆祝弹窗"再玩一次"按钮
   const replayBtn = document.getElementById('btn-replay');
   if(replayBtn) replayBtn.addEventListener('click', replayCelebration);
+  
+  // 绑定重试按钮
+  const retryBtn = document.getElementById('btn-retry');
+  if(retryBtn) retryBtn.addEventListener('click', ()=>{
+    const loader = document.getElementById('loader');
+    loader.classList.remove('bye');
+    loader.style.display='flex';
+    document.getElementById('btn-retry').style.display='none';
+    updateLoadDetail('正在重新加载...');
+    // 重置状态
+    setSt('hand-','#aaa','未加载');
+    setSt('face-','#aaa','未加载');
+    startCamera();
+  });
+  
   await startCamera();
   // 隐藏加载页
   setTimeout(()=>{
