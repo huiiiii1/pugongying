@@ -774,6 +774,8 @@ function blowDandInFocus(dand){
 const HS={detected:false,pinch:false,prevPinch:false,palm:false,px:.5,py:.5,dist:1,handsTogether:false};
 const FS={detected:false,pout:false,ratio:0,lx:.5,ly:.5};
 let grabbedDand=null, poutCD=0, palmCD=0, palmHold=0;
+// MediaPipe 检测计数器（调试用）
+let _mpHandResults=0, _mpFaceResults=0;
 // 防抖：连续N帧才算真正捏合/松开
 let pinchHoldFrames=0, openHoldFrames=0;
 const PINCH_CONFIRM=3;  // 需要连续3帧捏合才触发抓取
@@ -1583,86 +1585,71 @@ async function runLegacyMP(){
     return;
   }
 
+  // ═══════════════════════════════════════════════════════════
+  //  核心：使用 MediaPipe 官方 Camera 模式
+  //  这是 @mediapipe/camera_utils Camera 类的内部实现模式：
+  //    async function loop() { await send(); rAF(loop); }
+  //  rAF 在 await 完成后才调用 → 不可能并发堆积
+  //  不需要预热、不需要 busy 锁、不需要 setTimeout 递归
+  // ═══════════════════════════════════════════════════════════
+
   // ─── 初始化 Hands ───
   setSt('hand-','#f0d870','初始化手部模型…');
   updateLoadDetail('正在初始化手部模型（首次下载WASM较慢，请稍候）…');
   const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
-  hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.5,minTrackingConfidence:.45});
-  // 直接注册回调 — 最可靠的方式，不做任何包装或替换
-  hands.onResults(r=>onHands(r.multiHandLandmarks));
+  hands.setOptions({
+    maxNumHands:2,
+    modelComplexity:0,       // lite 模型，下载更快更稳定
+    minDetectionConfidence:0.5,
+    minTrackingConfidence:0.5
+  });
+  hands.onResults(r=>{
+    _mpHandResults++;
+    if(_mpHandResults <= 3) console.log('[hands.onResults] 第'+_mpHandResults+'次回调, 手数:', r.multiHandLandmarks?.length);
+    onHands(r.multiHandLandmarks);
+  });
 
   // ─── 初始化 FaceMesh ───
   setSt('face-','#f0d870','初始化面部模型…');
+  updateLoadDetail('正在初始化面部模型…');
   const face=new FaceMesh({locateFile:f=>`${cfg.fw}${f}`});
-  face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.45});
-  face.onResults(r=>onFace(r.multiFaceLandmarks));
+  face.setOptions({
+    maxNumFaces:1,
+    refineLandmarks:true,
+    minDetectionConfidence:0.5,
+    minTrackingConfidence:0.5
+  });
+  face.onResults(r=>{
+    _mpFaceResults++;
+    if(_mpFaceResults <= 3) console.log('[face.onResults] 第'+_mpFaceResults+'次回调, 面数:', r.multiFaceLandmarks?.length);
+    onFace(r.multiFaceLandmarks);
+  });
 
-  // ─── 简单可靠预热：await send() + 超时保护 + 重试 ───
-  // send() 成功 resolve = WASM 已加载完毕 + onResults 已被触发
-  // send() reject 或超时 = WASM 还没好，等 800ms 再试
-  async function warmupSend(model, name, maxTries=6, timeoutMs=15000){
-    for(let i=0; i<maxTries; i++){
-      try{
-        updateLoadDetail(`正在预热${name}（第${i+1}/${maxTries}次，首次需下载WASM…）`);
-        await Promise.race([
-          model.send({image:video}),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('预热超时')), timeoutMs))
-        ]);
-        return true;
-      }catch(e){
-        console.warn(`[${name}] 预热第${i+1}次失败:`, e.message||e);
-        if(i < maxTries-1) await new Promise(r=>setTimeout(r, 800));
-      }
-    }
-    return false;
-  }
-
-  setSt('hand-','#f0d870','预热手部（加载WASM）…');
-  const handOk = await warmupSend(hands, '手部模型');
-  if(handOk){
-    setSt('hand-','#7de8a0','手部就绪✓');
-    updateLoadDetail('✓ 手部模型预热成功');
-  } else {
-    setSt('hand-','#7de8a0','手部运行中');
-    updateLoadDetail('手部预热超时，将在检测中自动就绪…');
-  }
-
-  setSt('face-','#f0d870','预热面部（加载WASM）…');
-  const faceOk = await warmupSend(face, '面部模型');
-  if(faceOk){
-    setSt('face-','#7de8a0','面部就绪✓');
-    updateLoadDetail('✓ 面部模型预热成功');
-  } else {
-    setSt('face-','#7de8a0','面部运行中');
-    updateLoadDetail('面部预热超时，将在检测中自动就绪…');
-  }
-
-  updateLoadDetail('✓ 初始化完成，开始检测！');
+  // ─── 不预热！直接开始检测循环 ───
+  // 官方模式：首次 send() 会触发 WASM 下载，后续帧自动正常
+  // 前 2-3 秒可能没有结果（WASM 下载中），之后自动开始检测
+  setSt('hand-','#7de8a0','手部运行中');
+  setSt('face-','#7de8a0','面部运行中');
+  updateLoadDetail('✓ 模型初始化完成，正在下载WASM并开始检测…');
   window._mpReady = true;
 
-  // ─── 检测循环：setTimeout 递归，彻底避免 rAF 并发堆积 ───
-  // 每次 send 完成后才排下一次，绝不会堆积并发
-  // handLoop 和 faceLoop 各自独立，互不阻塞
-  function handLoop(){
-    if(video.readyState>=2){
-      hands.send({image:video})
-        .catch(e=>console.warn('[hands.send]',e))
-        .then(()=>setTimeout(handLoop, 30));
-    } else {
-      setTimeout(handLoop, 200);
+  // 检测计数器（调试用）
+  let _sendCount = 0;
+  async function detectLoop(){
+    if(video.readyState >= 2){
+      _sendCount++;
+      // 每 50 次输出一次状态
+      if(_sendCount % 50 === 1){
+        console.log(`[detectLoop] 第${_sendCount}帧, hand结果:${_mpHandResults}次, face结果:${_mpFaceResults}次`);
+      }
+      try { await hands.send({image:video}); }
+      catch(e){ console.warn('[hands.send] 第'+_sendCount+'帧失败:', e.message||e); }
+      try { await face.send({image:video}); }
+      catch(e){ console.warn('[face.send] 第'+_sendCount+'帧失败:', e.message||e); }
     }
+    requestAnimationFrame(detectLoop);
   }
-  function faceLoop(){
-    if(video.readyState>=2){
-      face.send({image:video})
-        .catch(e=>console.warn('[face.send]',e))
-        .then(()=>setTimeout(faceLoop, 50));
-    } else {
-      setTimeout(faceLoop, 200);
-    }
-  }
-  handLoop();
-  faceLoop();
+  requestAnimationFrame(detectLoop);
 }
 
 // ─── 键盘备用操作 ───
