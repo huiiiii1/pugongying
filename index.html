@@ -1583,95 +1583,86 @@ async function runLegacyMP(){
     return;
   }
 
-  // ─── 初始化 Hands（不在这里注册 onResults，交给 warmupWithRetry）───
+  // ─── 初始化 Hands ───
   setSt('hand-','#f0d870','初始化手部模型…');
-  updateLoadDetail('正在初始化手部模型（首次下载较慢，请稍候）…');
+  updateLoadDetail('正在初始化手部模型（首次下载WASM较慢，请稍候）…');
   const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
   hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.5,minTrackingConfidence:.45});
+  // 直接注册回调 — 最可靠的方式，不做任何包装或替换
+  hands.onResults(r=>onHands(r.multiHandLandmarks));
 
-  // ─── 初始化 FaceMesh（不在这里注册 onResults，交给 warmupWithRetry）───
+  // ─── 初始化 FaceMesh ───
   setSt('face-','#f0d870','初始化面部模型…');
   const face=new FaceMesh({locateFile:f=>`${cfg.fw}${f}`});
   face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.45});
+  face.onResults(r=>onFace(r.multiFaceLandmarks));
 
-  // ─── 可靠预热：等 onResults 被调用才算成功（最多等 12 秒）───
-  // 注意：hands.onResults 只支持一个回调，这里用包装函数
-  async function warmupWithRetry(model, name, mainCb, timeoutMs=12000){
-    return new Promise(resolve=>{
-      let done=false;
-      // 包装回调：预热成功一次后恢复原始 mainCb
-      model.onResults(result=>{
-        if(!done){
-          done=true;
-          // 恢复原始回调
-          model.onResults(mainCb);
-          mainCb(result);  // 把这次结果也传给原始回调
-          resolve(true);
-        } else {
-          mainCb(result);
-        }
-      });
-      setTimeout(()=>{
-        if(!done){
-          done=true;
-          // 超时：恢复原始回调，继续运行
-          model.onResults(mainCb);
-          resolve(false);
-        }
-      }, timeoutMs);
-      // 触发 send
-      model.send({image:video}).catch(()=>{});
-    });
+  // ─── 简单可靠预热：await send() + 超时保护 + 重试 ───
+  // send() 成功 resolve = WASM 已加载完毕 + onResults 已被触发
+  // send() reject 或超时 = WASM 还没好，等 800ms 再试
+  async function warmupSend(model, name, maxTries=6, timeoutMs=15000){
+    for(let i=0; i<maxTries; i++){
+      try{
+        updateLoadDetail(`正在预热${name}（第${i+1}/${maxTries}次，首次需下载WASM…）`);
+        await Promise.race([
+          model.send({image:video}),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('预热超时')), timeoutMs))
+        ]);
+        return true;
+      }catch(e){
+        console.warn(`[${name}] 预热第${i+1}次失败:`, e.message||e);
+        if(i < maxTries-1) await new Promise(r=>setTimeout(r, 800));
+      }
+    }
+    return false;
   }
 
   setSt('hand-','#f0d870','预热手部（加载WASM）…');
-  updateLoadDetail('正在预热手部模型（首次需下载WASM，请稍候）…');
-  const handOk = await warmupWithRetry(hands, '手部模型', r=>onHands(r.multiHandLandmarks));
+  const handOk = await warmupSend(hands, '手部模型');
   if(handOk){
     setSt('hand-','#7de8a0','手部就绪✓');
     updateLoadDetail('✓ 手部模型预热成功');
   } else {
     setSt('hand-','#7de8a0','手部运行中');
-    updateLoadDetail('手部模型将在检测时自动就绪');
-    console.warn('[手部] 预热超时，循环中会自动就绪');
+    updateLoadDetail('手部预热超时，将在检测中自动就绪…');
   }
 
   setSt('face-','#f0d870','预热面部（加载WASM）…');
-  updateLoadDetail('正在预热面部模型…');
-  const faceOk = await warmupWithRetry(face, '面部模型', r=>onFace(r.multiFaceLandmarks));
+  const faceOk = await warmupSend(face, '面部模型');
   if(faceOk){
     setSt('face-','#7de8a0','面部就绪✓');
     updateLoadDetail('✓ 面部模型预热成功');
   } else {
     setSt('face-','#7de8a0','面部运行中');
-    updateLoadDetail('面部模型将在检测时自动就绪');
-    console.warn('[面部] 预热超时，循环中会自动就绪');
+    updateLoadDetail('面部预热超时，将在检测中自动就绪…');
   }
 
   updateLoadDetail('✓ 初始化完成，开始检测！');
-  // 立即通知 main() 可以隐藏加载页了（标记已就绪）
   window._mpReady = true;
 
-  // ─── 驱动循环（非 async，避免 await + rAF 并发堆积）───
-  // hands.send / face.send 底层是回调式的，不需要 await，
-  // 直接 fire-and-forget，结果由 onResults 回调处理
-  let fc=0;
-  let handBusy=false, faceBusy=false;
-  function mpTick(){
-    fc++;
+  // ─── 检测循环：setTimeout 递归，彻底避免 rAF 并发堆积 ───
+  // 每次 send 完成后才排下一次，绝不会堆积并发
+  // handLoop 和 faceLoop 各自独立，互不阻塞
+  function handLoop(){
     if(video.readyState>=2){
-      if(fc%2===0 && !handBusy){
-        handBusy=true;
-        hands.send({image:video}).catch(()=>{}).finally(()=>{ handBusy=false; });
-      }
-      if(fc%3===0 && !faceBusy){
-        faceBusy=true;
-        face.send({image:video}).catch(()=>{}).finally(()=>{ faceBusy=false; });
-      }
+      hands.send({image:video})
+        .catch(e=>console.warn('[hands.send]',e))
+        .then(()=>setTimeout(handLoop, 30));
+    } else {
+      setTimeout(handLoop, 200);
     }
-    requestAnimationFrame(mpTick);
   }
-  mpTick();
+  function faceLoop(){
+    if(video.readyState>=2){
+      face.send({image:video})
+        .catch(e=>console.warn('[face.send]',e))
+        .then(()=>setTimeout(faceLoop, 50));
+    } else {
+      setTimeout(faceLoop, 200);
+    }
+  }
+  handLoop();
+  faceLoop();
 }
 
 // ─── 键盘备用操作 ───
