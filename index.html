@@ -1583,70 +1583,91 @@ async function runLegacyMP(){
     return;
   }
 
-  // ─── 初始化 Hands ───
+  // ─── 初始化 Hands（不在这里注册 onResults，交给 warmupWithRetry）───
   setSt('hand-','#f0d870','初始化手部模型…');
   updateLoadDetail('正在初始化手部模型（首次下载较慢，请稍候）…');
   const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
   hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.5,minTrackingConfidence:.45});
-  hands.onResults(r=>onHands(r.multiHandLandmarks));
 
-  // ─── 初始化 FaceMesh ───
+  // ─── 初始化 FaceMesh（不在这里注册 onResults，交给 warmupWithRetry）───
   setSt('face-','#f0d870','初始化面部模型…');
   const face=new FaceMesh({locateFile:f=>`${cfg.fw}${f}`});
   face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.45});
-  face.onResults(r=>onFace(r.multiFaceLandmarks));
 
-  // ─── 可靠预热（带重试，最多尝试5次，每次间隔500ms）───
-  // MediaPipe 首次 send 前需要下载 WASM，这个过程可能需要几秒
-  // 不能只发一次就判断失败，要重试等待 WASM 加载完成
-  async function warmupWithRetry(model, name, maxTries=8, intervalMs=800){
-    for(let i=0; i<maxTries; i++){
-      try{
-        updateLoadDetail(`正在预热${name}（${i+1}/${maxTries}）…`);
-        await model.send({image:video});
-        return true;  // 成功
-      }catch(e){
-        console.warn(`[${name}] 预热第${i+1}次失败:`, e.message||e);
-        if(i < maxTries-1){
-          await new Promise(r=>setTimeout(r, intervalMs));
+  // ─── 可靠预热：等 onResults 被调用才算成功（最多等 12 秒）───
+  // 注意：hands.onResults 只支持一个回调，这里用包装函数
+  async function warmupWithRetry(model, name, mainCb, timeoutMs=12000){
+    return new Promise(resolve=>{
+      let done=false;
+      // 包装回调：预热成功一次后恢复原始 mainCb
+      model.onResults(result=>{
+        if(!done){
+          done=true;
+          // 恢复原始回调
+          model.onResults(mainCb);
+          mainCb(result);  // 把这次结果也传给原始回调
+          resolve(true);
+        } else {
+          mainCb(result);
         }
-      }
-    }
-    return false;  // 全部重试失败，但不阻断运行
+      });
+      setTimeout(()=>{
+        if(!done){
+          done=true;
+          // 超时：恢复原始回调，继续运行
+          model.onResults(mainCb);
+          resolve(false);
+        }
+      }, timeoutMs);
+      // 触发 send
+      model.send({image:video}).catch(()=>{});
+    });
   }
 
   setSt('hand-','#f0d870','预热手部（加载WASM）…');
-  const handOk = await warmupWithRetry(hands, '手部模型');
+  updateLoadDetail('正在预热手部模型（首次需下载WASM，请稍候）…');
+  const handOk = await warmupWithRetry(hands, '手部模型', r=>onHands(r.multiHandLandmarks));
   if(handOk){
     setSt('hand-','#7de8a0','手部就绪✓');
     updateLoadDetail('✓ 手部模型预热成功');
   } else {
-    // 预热失败不阻断，继续运行——检测循环中会自动重试
     setSt('hand-','#7de8a0','手部运行中');
     updateLoadDetail('手部模型将在检测时自动就绪');
-    console.warn('[手部] 预热未完成，将在循环中自动完成初始化');
+    console.warn('[手部] 预热超时，循环中会自动就绪');
   }
 
   setSt('face-','#f0d870','预热面部（加载WASM）…');
-  const faceOk = await warmupWithRetry(face, '面部模型');
+  updateLoadDetail('正在预热面部模型…');
+  const faceOk = await warmupWithRetry(face, '面部模型', r=>onFace(r.multiFaceLandmarks));
   if(faceOk){
     setSt('face-','#7de8a0','面部就绪✓');
     updateLoadDetail('✓ 面部模型预热成功');
   } else {
     setSt('face-','#7de8a0','面部运行中');
     updateLoadDetail('面部模型将在检测时自动就绪');
-    console.warn('[面部] 预热未完成，将在循环中自动完成初始化');
+    console.warn('[面部] 预热超时，循环中会自动就绪');
   }
 
   updateLoadDetail('✓ 初始化完成，开始检测！');
+  // 立即通知 main() 可以隐藏加载页了（标记已就绪）
+  window._mpReady = true;
 
-  // ─── 驱动循环 ───
+  // ─── 驱动循环（非 async，避免 await + rAF 并发堆积）───
+  // hands.send / face.send 底层是回调式的，不需要 await，
+  // 直接 fire-and-forget，结果由 onResults 回调处理
   let fc=0;
-  async function mpTick(){
+  let handBusy=false, faceBusy=false;
+  function mpTick(){
     fc++;
     if(video.readyState>=2){
-      if(fc%2===0){ try{await hands.send({image:video});}catch(e){} }
-      if(fc%3===0){ try{await face.send({image:video});}catch(e){} }
+      if(fc%2===0 && !handBusy){
+        handBusy=true;
+        hands.send({image:video}).catch(()=>{}).finally(()=>{ handBusy=false; });
+      }
+      if(fc%3===0 && !faceBusy){
+        faceBusy=true;
+        face.send({image:video}).catch(()=>{}).finally(()=>{ faceBusy=false; });
+      }
     }
     requestAnimationFrame(mpTick);
   }
@@ -1727,12 +1748,10 @@ async function main(){
   });
   
   await startCamera();
-  // 隐藏加载页
-  setTimeout(()=>{
-    const l=document.getElementById('loader');
-    l.classList.add('bye');
-    setTimeout(()=>l.style.display='none',1000);
-  },1500);
+  // 加载页：startCamera 完成后立即淡出（不再固定 1.5s，可能 warmup 已耗时几秒）
+  const l=document.getElementById('loader');
+  l.classList.add('bye');
+  setTimeout(()=>l.style.display='none',1000);
 }
 main();
 </script>
