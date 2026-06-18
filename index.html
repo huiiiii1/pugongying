@@ -83,37 +83,39 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
   font-family:monospace;min-width:220px;display:none;
 }
 #dbg.show{display:block;}
-/* 庆祝弹窗：双手合十 + 大部分蒲公英已吹散 */
-#celebration-popup{
-  position:fixed;inset:0;z-index:100;
+/* 手势教程弹窗 */
+#tutorial{
+  position:fixed;inset:0;z-index:998;
   display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.25);backdrop-filter:blur(6px);
-  opacity:0;pointer-events:none;transition:opacity .5s ease;
+  background:linear-gradient(180deg,rgba(185,223,245,.96),rgba(216,239,248,.97),rgba(206,234,181,.96));
+  transition:opacity .6s ease;
 }
-#celebration-popup.show{opacity:1;pointer-events:auto;}
-#celebration-box{
-  text-align:center;background:linear-gradient(145deg,rgba(255,255,255,.92),rgba(245,250,255,.88));
-  backdrop-filter:blur(24px);border:2px solid rgba(200,235,255,.7);
-  border-radius:28px;padding:42px 48px 36px;
-  box-shadow:0 10px 50px rgba(120,200,240,.35),0 0 80px rgba(160,220,240,.15),inset 0 1px 0 rgba(255,255,255,.9);
-  max-width:430px;transform:scale(.9);transition:transform .45s cubic-bezier(.34,1.56,.64,1);
+#tutorial.hidden{opacity:0;pointer-events:none;}
+#tutorial-box{
+  text-align:center;background:rgba(255,255,255,.88);
+  backdrop-filter:blur(20px);border:2px solid rgba(200,235,255,.7);
+  border-radius:28px;padding:36px 40px 30px;
+  box-shadow:0 8px 40px rgba(120,200,240,.3),inset 0 1px 0 rgba(255,255,255,.9);
+  max-width:480px;
 }
-#celebration-popup.show #celebration-box{transform:scale(1);}
-.celeb-icon{font-size:52px;margin-bottom:14px;}
-.celeb-text{
-  font-size:19px;font-weight:700;color:#5a90b0;line-height:1.7;
-  margin-bottom:28px;letter-spacing:.03em;
+.tut-title{font-size:22px;font-weight:800;color:#5a90b0;margin-bottom:6px;letter-spacing:.04em;}
+.tut-sub{font-size:13px;color:#8ab8d0;margin-bottom:20px;}
+.tut-list{text-align:left;margin-bottom:24px;}
+.tut-item{
+  display:flex;align-items:center;gap:12px;padding:8px 0;
+  border-bottom:1px solid rgba(200,220,240,.35);font-size:14px;color:#5a7a9a;line-height:1.5;
 }
-.celeb-highlight{color:#e87a9a;font-size:21px;display:block;margin-bottom:4px;}
-#btn-replay{
-  display:inline-block;padding:13px 44px;border:none;border-radius:50px;
-  font-size:17px;font-weight:700;color:#fff;cursor:pointer;
+.tut-item:last-child{border-bottom:none;}
+.tut-emoji{font-size:22px;flex-shrink:0;width:32px;text-align:center;}
+#btn-start{
+  display:inline-block;padding:14px 48px;border:none;border-radius:50px;
+  font-size:16px;font-weight:700;color:#fff;cursor:pointer;
   background:linear-gradient(135deg,#7ecce8,#a0d8f0,#90c0e0);
   box-shadow:0 5px 22px rgba(100,190,230,.4),inset 0 1px 0 rgba(255,255,255,.4);
   transition:all .3s ease;letter-spacing:.06em;
 }
-#btn-replay:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(100,190,230,.55);}
-#btn-replay:active{transform:translateY(0);}
+#btn-start:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(100,190,230,.55);}
+#btn-start:active{transform:translateY(0);}
 #loader{
   position:fixed;inset:0;z-index:999;
   background:linear-gradient(180deg,#b8dff5,#d8eff8,#ceeab5);
@@ -130,6 +132,22 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
 </style>
 </head>
 <body>
+
+<!-- 手势教程弹窗 -->
+<div id="tutorial">
+  <div id="tutorial-box">
+    <div class="tut-title">🌸 蒲公英梦境</div>
+    <div class="tut-sub">用手势和表情与蒲公英互动</div>
+    <div class="tut-list">
+      <div class="tut-item"><span class="tut-emoji">👌</span><span>捏合手指 → 抓取并放大蒲公英</span></div>
+      <div class="tut-item"><span class="tut-emoji">💨</span><span>捏合中撅嘴 → 吹散该株种子</span></div>
+      <div class="tut-item"><span class="tut-emoji">✋</span><span>松开捏合 → 轻轻放下</span></div>
+      <div class="tut-item"><span class="tut-emoji">🖐</span><span>5指展开(持续) → 全部复原</span></div>
+      <div class="tut-item"><span class="tut-emoji">😮</span><span>撅起嘴巴 → 区域吹散</span></div>
+    </div>
+    <button id="btn-start">我知道了，现在就开始体验</button>
+  </div>
+</div>
 
 <div id="loader">
   <svg class="spin" viewBox="0 0 52 52" fill="none">
@@ -171,8 +189,6 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
   <span id="dbg-pinch">捏合: -</span><br>
   <span id="dbg-pout">嘴型: -</span><br>
   <span id="dbg-palm">张手: -</span><br>
-  <span id="dbg-together">合十: -</span><br>
-  <span id="dbg-blown">吹散比: -</span><br>
   <span id="dbg-fps">帧率: -</span>
 </div>
 
@@ -182,11 +198,9 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
   <div class="hi"><div class="hd" id="hd-hand"></div><span id="ht-hand">手部</span></div>
   <div class="hi"><div class="hd" id="hd-pinch"></div><span id="ht-pinch">未捏</span></div>
   <div class="hi"><div class="hd" id="hd-palm"></div><span id="ht-palm">未张</span></div>
-  <div class="hi"><div class="hd" id="hd-together"></div><span id="ht-together">合十</span></div>
   <span style="opacity:.3">|</span>
   <div class="hi"><div class="hd" id="hd-face"></div><span id="ht-face">面部</span></div>
   <div class="hi"><div class="hd" id="hd-pout"></div><span id="ht-pout">嘴</span></div>
-  <div class="hi"><div class="hd" id="hd-blown"></div><span id="ht-blown">吹散0%</span></div>
 </div>
 
 <div id="panel">
@@ -219,28 +233,10 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
   ✋ 松开捏合 → 轻轻放下<br>
   🖐 5指展开(持续) → 全复原<br>
   😮 撅起嘴巴 → 区域吹散<br>
-  🙏 双手合十(吹散后)→ 庆祝弹窗，再玩一次<br>
   <br>
-  <span style="font-size:10.5px;color:#7a9ab8;line-height:1.7">
-    💡 <b>双手合十</b>：当大部分蒲公英被吹散后，<br>
-    &nbsp;&nbsp;&nbsp;把两只手的手掌靠近（像祈祷/拜佛姿势），<br>
-    &nbsp;&nbsp;&nbsp;保持约1秒即可弹出庆祝框~<br>
-    &nbsp;&nbsp;&nbsp;点击「再玩一次」让所有蒲公英重新长出！
-  </span><br><br>
   <span style="font-size:10px;color:#8ab8d0">键盘: B=吹散 G=抓/吹 P=放下 R=复原 D=调试</span>
 </div>
 <div id="atxt"></div>
-
-<!-- 庆祝弹窗：双手合十 + 大部分蒲公英吹散后弹出 -->
-<div id="celebration-popup">
-  <div id="celebration-box">
-    <div class="celeb-icon">🌼✨🌸</div>
-    <p class="celeb-text">
-      <span class="celeb-highlight">太奇妙了！</span>你赋予了飘散的蒲公英第二次生命！
-    </p>
-    <button id="btn-replay">🌿 再玩一次</button>
-  </div>
-</div>
 
 <!-- Three.js + GSAP -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -583,9 +579,6 @@ function resetAll(){
   });
   grabbedDand=null;
   releaseFocus();
-  // 重置庆祝状态，允许再次触发
-  celebrationShown=false;
-  togetherHold=0;
 }
 
 // ═══════════════════════════════════
@@ -771,7 +764,7 @@ function blowDandInFocus(dand){
 // ═══════════════════════════════════
 //  状态机
 // ═══════════════════════════════════
-const HS={detected:false,pinch:false,prevPinch:false,palm:false,px:.5,py:.5,dist:1,handsTogether:false};
+const HS={detected:false,pinch:false,prevPinch:false,palm:false,px:.5,py:.5,dist:1};
 const FS={detected:false,pout:false,ratio:0,lx:.5,ly:.5};
 let grabbedDand=null, poutCD=0, palmCD=0, palmHold=0;
 // MediaPipe 检测计数器（调试用）
@@ -781,58 +774,12 @@ let pinchHoldFrames=0, openHoldFrames=0;
 const PINCH_CONFIRM=3;  // 需要连续3帧捏合才触发抓取
 const OPEN_CONFIRM=4;   // 需要连续4帧松开才触发放下（防误触）
 
-// ═══ 庆祝弹窗：双手合十 + 大部分蒲公英吹散 ═══
-let togetherHold=0;           // 双手合十持续帧数
-const TOGETHER_CONFIRM=15;    // 需要连续15帧(~0.5秒)合十才触发
-let celebrationShown=false;  // 是否已弹出过（防止重复弹）
-let celebPopupEl=null, celebBoxEl=null;
-
-function getBlownRatio(){
-  if(dands.length===0) return 0;
-  const blown = dands.filter(d=>d.state==='blown').length;
-  return blown / dands.length;  // 0~1，>0.6即大部分吹散
-}
-
-function showCelebration(){
-  if(celebrationShown) return;
-  celebrationShown=true;
-  celebPopupEl = document.getElementById('celebration-popup');
-  celebBoxEl = document.getElementById('celebration-box');
-  if(!celebPopupEl) return;
-  // 弹出动画
-  celebPopupEl.classList.add('show');
-}
-
-function hideCelebration(){
-  if(celebPopupEl){
-    celebPopupEl.classList.remove('show');
-    setTimeout(()=>{ celebrationShown=false; }, 600);
-  }
-}
-
-function replayCelebration(){
-  hideCelebration();
-  setTimeout(()=>{
-    resetAll();
-    showAct('🌿 新的开始！');
-    togetherHold=0;
-  }, 300);
-}
-
 function projDand(dand){
   const p=dand.g.position.clone(); p.y+=dand.headY; p.project(cam);
   return{sx:(p.x+1)/2, sy:(1-p.y)/2};
 }
 
 function interact(){
-  // 合十状态下不要触发捏合/张手/抓取逻辑
-  // 否则用户双手合十时第一只手的捏合会被误识别
-  if(HS.handsTogether){
-    HS.prevPinch=HS.pinch;
-    pinchHoldFrames=0; openHoldFrames=0;  // 重置防抖计数
-    return;
-  }
-
   // 防抖计数
   if(HS.pinch){ pinchHoldFrames++; openHoldFrames=0; }
   else         { openHoldFrames++;  pinchHoldFrames=0; }
@@ -914,21 +861,6 @@ function interact(){
   if(poutCD>0) poutCD--;
   if(palmCD>0) palmCD--;
 
-  // ⑦ 双手合十 + 大部分蒲公英已吹散 → 弹出庆祝框
-  // 注意：不依赖 HS.pinch，因为合十时第一只手可能也略微捏合
-  // 改为：只要两只手都入镜且掌心距离<0.28，就累计
-  if(HS.handsTogether){
-    togetherHold++;
-  } else {
-    togetherHold=0;
-  }
-  const blownPct = getBlownRatio();
-  // 条件：持续合十25帧 + 超过60%蒲公英已吹散 + 尚未弹过
-  if(togetherHold>=TOGETHER_CONFIRM && blownPct>=0.6 && !celebrationShown){
-    console.log(`[庆祝] 触发! 合十帧:${togetherHold}/${TOGETHER_CONFIRM} 吹散比:${(blownPct*100).toFixed(0)}%`);
-    showCelebration();
-  }
-
   HS.prevPinch=HS.pinch;
 }
 
@@ -943,13 +875,8 @@ function updateHud(){
   setHud('hd-pinch','ht-pinch',HS.pinch?1:0,
     HS.pinch?`捏✓${(HS.dist*100).toFixed(0)}`:`未捏 ${(HS.dist*100).toFixed(0)}`);
   setHud('hd-palm','ht-palm',HS.palm?1:0,HS.palm?`张开(${palmHold})`:'未张');
-  setHud('hd-together','ht-together',HS.handsTogether?1:0,
-    HS.handsTogether?`🙏${togetherHold}/${TOGETHER_CONFIRM}`:`合十`);
   setHud('hd-face','ht-face',FS.detected?0:-1,FS.detected?'面部✓':'面部');
   setHud('hd-pout','ht-pout',FS.pout?1:0,FS.pout?'嘟嘴✓':`嘴${(FS.ratio*100).toFixed(0)}`);
-  const bpct = getBlownRatio();
-  setHud('hd-blown','ht-blown',bpct>=0.6?1:(bpct>0.3?-1:0),
-    `吹散${(bpct*100).toFixed(0)}%`);
 }
 
 let _atTimer=null;
@@ -1077,7 +1004,6 @@ function loadScriptWithRetry(srcList, maxRetry = 2) {
 
         const s = document.createElement('script');
         s.src = src;
-        s.crossOrigin = 'anonymous';  // 允许跨域（避免CORS问题）
 
         const timeout = setTimeout(() => {
           updateLoadDetail(`✗ 超时: ${src.split('/').pop()}`);
@@ -1160,11 +1086,11 @@ function importModule(srcList, timeoutMs = 18000){
   });
 }
 
-// ─── 手部关键点处理（支持双手检测 + 双手合十判定）───
+// ─── 手部关键点处理 ───
 function onHands(lmsList){
   ov2d.clearRect(0,0,ovCvs.width,ovCvs.height);
   if(!lmsList||lmsList.length===0){
-    HS.detected=false; HS.pinch=false; HS.palm=false; HS.handsTogether=false;
+    HS.detected=false; HS.pinch=false; HS.palm=false;
     setSt('hand-','#aaa','未检测到手');
     dbgSet('dbg-hand','手部: 未入画'); return;
   }
@@ -1185,34 +1111,7 @@ function onHands(lmsList){
     lm.forEach(p=>{ov2d.beginPath();ov2d.arc(p.x*w,p.y*h,2.5,0,Math.PI*2);ov2d.fill();});
   });
 
-  // ═══ 双手合十判定 ═══
-  // 用两只手掌心（中指MCP点9）的距离判断，比手腕更准
-  HS.handsTogether = false;
-  if(lmsList.length >= 2){
-    const p0 = lmsList[0][9], p1 = lmsList[1][9]; // 掌心位置
-    const dist = Math.hypot(p0.x-p1.x, p0.y-p1.y);
-    // 阈值放宽到0.35：合十时通常10~25%，留足余量
-    // 同时检查两只手都"张开"（不是互相握拳）→ 避免单手握拳被误判
-    const isHandOpen=(lm)=>{
-      const tips=[8,12,16,20], mcps=[6,10,14,18];
-      let o=0; tips.forEach((t,i)=>{ if(lm[t].y<lm[mcps[i]].y-0.02) o++; });
-      return o>=3;
-    };
-    const bothOpen = isHandOpen(lmsList[0]) && isHandOpen(lmsList[1]);
-    HS.handsTogether = dist < 0.35 && bothOpen;
-
-    if(HS.handsTogether){
-      ov2d.strokeStyle='rgba(255,140,180,.85)'; ov2d.lineWidth=2.5;
-      ov2d.beginPath();
-      ov2d.moveTo(p0.x*w,p0.y*h); ov2d.lineTo(p1.x*w,p1.y*h);
-      ov2d.stroke();
-      const mx=(p0.x+p1.x)/2*w, my=(p0.y+p1.y)/2*h;
-      ov2d.strokeStyle='rgba(255,160,200,.45)'; ov2d.lineWidth=3;
-      ov2d.beginPath(); ov2d.arc(mx,my,18,0,Math.PI*2); ov2d.stroke();
-    }
-  }
-
-  // ═══ 第一只手：捏合 / 张手检测（保持原有逻辑不变）═══
+  // ═══ 第一只手：捏合 / 张手检测 ═══
   const lm=lmsList[0];
 
   // 捏合距离
@@ -1238,20 +1137,11 @@ function onHands(lmsList){
   tips.forEach((t,i)=>{ if(lm[t].y<lm[mcps[i]].y-0.035) oc++; });
   HS.palm = oc>=4 && !HS.pinch;
 
-  setSt('hand-', HS.handsTogether?'#ff9eb5':(HS.pinch?'#ff9eb5':(HS.palm?'#b0e8d0':'#7de8a0')),
-    HS.handsTogether?`🙏合十✓`:(
-    HS.pinch?`✊捏 d=${(HS.dist*100).toFixed(0)}`:(HS.palm?`🖐张(${oc})`:`✋ ${lm.length}pt ${lmsList.length}手`)));
-  dbgSet('dbg-hand', `手部: ✓ ${lmsList.length}手 ${HS.handsTogether?'🙏':''}`);
+  setSt('hand-', HS.pinch?'#ff9eb5':(HS.palm?'#b0e8d0':'#7de8a0'),
+    HS.pinch?`✊捏 d=${(HS.dist*100).toFixed(0)}`:(HS.palm?`🖐张(${oc})`:`✋ ${lm.length}pt ${lmsList.length}手`));
+  dbgSet('dbg-hand', `手部: ✓ ${lmsList.length}手`);
   dbgSet('dbg-pinch', `捏合: ${(HS.dist*100).toFixed(1)} 阈${(CFG.pinchThresh*100).toFixed(0)} ${HS.pinch?'✊':'✋'}`);
   dbgSet('dbg-palm',  `张手: ${oc}/5 ${HS.palm?'🖐':''}`);
-  dbgSet('dbg-together', `合十: ${lmsList.length}手 ${HS.handsTogether?'✓('+togetherHold+'帧)':'✗'} 阈0.35`);
-  dbgSet('dbg-blown', `吹散比: ${(getBlownRatio()*100).toFixed(0)}% (需≥60%)`);
-  // 合十调试：显示检测到的手数、距离、吹散比例
-  if(lmsList.length >= 2){
-    const p0=lmsList[0][9], p1=lmsList[1][9];
-    const d=Math.hypot(p0.x-p1.x,p0.y-p1.y);
-    console.log(`[合十] 手数:${lmsList.length} 掌心距:${(d*100).toFixed(1)}% 合十:${HS.handsTogether?'✓':'✗'} 吹散比:${(getBlownRatio()*100).toFixed(0)}%`);
-  }
 }
 
 // ─── 面部关键点处理 ───
@@ -1561,13 +1451,17 @@ async function runLegacyMP(){
       setSt('face-','#f0d870',`加载面部JS (${ci+1}/${CDNS.length})…`);
       updateLoadDetail(`正在加载 @mediapipe/face_mesh (CDN ${ci+1}/${CDNS.length})…`);
       if(!window.FaceMesh) await loadScriptWithRetry([c.f], 1);
-      // 等待类注册（最多4秒）
+      // 等待 Hands 和 FaceMesh 类都注册（最多4秒）
       await new Promise((res,rej)=>{
-        if(window.Hands){ res(); return; }
+        const check=()=>{
+          if(window.Hands && window.FaceMesh) return true;
+          return false;
+        };
+        if(check()){ res(); return; }
         const t0=Date.now();
         const iv=setInterval(()=>{
-          if(window.Hands){ clearInterval(iv); res(); }
-          else if(Date.now()-t0>4000){ clearInterval(iv); rej(new Error('Hands class not found')); }
+          if(check()){ clearInterval(iv); res(); }
+          else if(Date.now()-t0>4000){ clearInterval(iv); rej(new Error('类未注册')); }
         },100);
       });
       ok=true; cfg=c; break;
@@ -1577,7 +1471,7 @@ async function runLegacyMP(){
     }
   }
 
-  if(!ok || !window.Hands){
+  if(!ok || !window.Hands || !window.FaceMesh){
     setSt('hand-','#e08080','MediaPipe全部加载失败');
     setSt('face-','#e08080','请检查网络连接');
     updateLoadDetail('✗ 所有CDN均失败，请点击"重新加载"按钮重试');
@@ -1599,7 +1493,7 @@ async function runLegacyMP(){
   const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
   hands.setOptions({
     maxNumHands:2,
-    modelComplexity:0,       // lite 模型，下载更快更稳定
+    modelComplexity:1,
     minDetectionConfidence:0.5,
     minTrackingConfidence:0.5
   });
@@ -1625,27 +1519,35 @@ async function runLegacyMP(){
     onFace(r.multiFaceLandmarks);
   });
 
-  // ─── 不预热！直接开始检测循环 ───
-  // 官方模式：首次 send() 会触发 WASM 下载，后续帧自动正常
-  // 前 2-3 秒可能没有结果（WASM 下载中），之后自动开始检测
+  // ─── 检测循环 ───
   setSt('hand-','#7de8a0','手部运行中');
   setSt('face-','#7de8a0','面部运行中');
   updateLoadDetail('✓ 模型初始化完成，正在下载WASM并开始检测…');
-  window._mpReady = true;
 
-  // 检测计数器（调试用）
   let _sendCount = 0;
   async function detectLoop(){
     if(video.readyState >= 2){
       _sendCount++;
-      // 每 50 次输出一次状态
       if(_sendCount % 50 === 1){
         console.log(`[detectLoop] 第${_sendCount}帧, hand结果:${_mpHandResults}次, face结果:${_mpFaceResults}次`);
       }
-      try { await hands.send({image:video}); }
-      catch(e){ console.warn('[hands.send] 第'+_sendCount+'帧失败:', e.message||e); }
-      try { await face.send({image:video}); }
-      catch(e){ console.warn('[face.send] 第'+_sendCount+'帧失败:', e.message||e); }
+      // 带 15 秒超时的 send，防止首次 WASM 下载卡死
+      try {
+        await Promise.race([
+          hands.send({image:video}),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('hand send timeout')), 15000))
+        ]);
+      } catch(e){
+        if(_sendCount <= 5) console.warn('[hands.send] 第'+_sendCount+'帧失败:', e.message||e);
+      }
+      try {
+        await Promise.race([
+          face.send({image:video}),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('face send timeout')), 15000))
+        ]);
+      } catch(e){
+        if(_sendCount <= 5) console.warn('[face.send] 第'+_sendCount+'帧失败:', e.message||e);
+      }
     }
     requestAnimationFrame(detectLoop);
   }
@@ -1707,9 +1609,6 @@ async function main(){
   animate();
   trackFPS();
   setupKeyboard();
-  // 绑定庆祝弹窗"再玩一次"按钮
-  const replayBtn = document.getElementById('btn-replay');
-  if(replayBtn) replayBtn.addEventListener('click', replayCelebration);
   
   // 绑定重试按钮
   const retryBtn = document.getElementById('btn-retry');
@@ -1719,14 +1618,22 @@ async function main(){
     loader.style.display='flex';
     document.getElementById('btn-retry').style.display='none';
     updateLoadDetail('正在重新加载...');
-    // 重置状态
     setSt('hand-','#aaa','未加载');
     setSt('face-','#aaa','未加载');
     startCamera();
   });
   
+  // 等待用户点击"我知道了"按钮
+  await new Promise(resolve=>{
+    document.getElementById('btn-start').addEventListener('click', resolve);
+  });
+  // 隐藏教程弹窗
+  document.getElementById('tutorial').classList.add('hidden');
+  setTimeout(()=>{ document.getElementById('tutorial').style.display='none'; }, 600);
+  
+  // 开始加载摄像头和 MediaPipe
   await startCamera();
-  // 加载页：startCamera 完成后立即淡出（不再固定 1.5s，可能 warmup 已耗时几秒）
+  // 加载页淡出
   const l=document.getElementById('loader');
   l.classList.add('bye');
   setTimeout(()=>l.style.display='none',1000);
