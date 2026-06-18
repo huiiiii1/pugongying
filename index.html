@@ -1366,48 +1366,8 @@ async function startCamera(){
   dbgSet('dbg-cam', `摄像头: ${video.videoWidth}×${video.videoHeight}`);
   updateLoadDetail('✓ 摄像头已就绪');
 
-  // Step 2: 加载 tasks-vision（ES Module 方式 — 因为 .mjs 必须用 type=module）
-  // @mediapipe/tasks-vision 包的入口是 vision_bundle.mjs（不是 .js）
-  const TASKS_CDNS = [
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs',
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs',
-    'https://unpkg.com/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
-    'https://unpkg.com/@mediapipe/tasks-vision@0.10.9/vision_bundle.mjs',
-    'https://unpkg.com/@mediapipe/tasks-vision@0.10.8/vision_bundle.mjs',
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs',
-  ];
-  let tasksOk = false;
-
-  try{
-    setSt('hand-','#f0d870','加载tasks-vision (ESM)…');
-    const mod = await importModule(TASKS_CDNS, 15000);
-    // ESM 模式下把类挂到 window
-    if(mod){
-      if(mod.FilesetResolver) window.FilesetResolver = mod.FilesetResolver;
-      if(mod.HandLandmarker)  window.HandLandmarker  = mod.HandLandmarker;
-      if(mod.FaceLandmarker)  window.FaceLandmarker  = mod.FaceLandmarker;
-    }
-    if(window.HandLandmarker && window.FilesetResolver){
-      tasksOk = true;
-      updateLoadDetail('✓ tasks-vision 加载成功');
-    } else {
-      console.warn('[tasks-vision] ESM loaded but classes missing', Object.keys(mod||{}));
-      updateLoadDetail('✗ tasks-vision 加载但类缺失');
-    }
-  }catch(e){
-    console.warn('[tasks-vision ESM] 全部失败:', e);
-    updateLoadDetail('✗ tasks-vision 全部CDN失败，将尝试旧版…');
-  }
-
-  if(tasksOk){
-    await runTasksVision();
-    return;
-  }
-
-  // Step 3: 回退旧版（增加更多CDN备用）
-  console.log('[MP] tasks-vision不可用，尝试旧版…');
-  updateLoadDetail('tasks-vision不可用，尝试旧版 @mediapipe/hands…');
+  // Step 2: 加载 MediaPipe（直接使用稳定的 legacy 方式，避免 ESM 跨域 import 问题）
+  updateLoadDetail('正在加载 MediaPipe 手部和面部模型…');
   await runLegacyMP();
   }catch(err){
     // ─── 终极兜底：任何未捕获错误都显示重试按钮，绝不卡死 ───
@@ -1571,8 +1531,9 @@ async function runTasksVision(){
   }
 }
 
-// ─── 旧版 @mediapipe/hands + face_mesh ───
+// ─── 旧版 @mediapipe/hands + face_mesh（最可靠方案）───
 async function runLegacyMP(){
+  // 3组 CDN 备用，每组都有手部+面部
   const CDNS=[
     {h:'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js',
      hw:'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/',
@@ -1582,64 +1543,104 @@ async function runLegacyMP(){
      hw:'https://unpkg.com/@mediapipe/hands@0.4.1646424915/',
      f:'https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js',
      fw:'https://unpkg.com/@mediapipe/face_mesh@0.4.1633559619/'},
+    {h:'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js',
+     hw:'https://cdn.jsdelivr.net/npm/@mediapipe/hands/',
+     f:'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js',
+     fw:'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/'},
   ];
 
   let ok=false, cfg=null;
-  for(const c of CDNS){
+  for(let ci=0; ci<CDNS.length; ci++){
+    const c=CDNS[ci];
     try{
-      setSt('hand-','#f0d870','加载legacy手部JS…');
-      if(!window.Hands) await loadScript(c.h);
-      setSt('face-','#f0d870','加载legacy面部JS…');
-      if(!window.FaceMesh) await loadScript(c.f);
-      if(window.Hands){ ok=true; cfg=c; break; }
-    }catch(e){ console.warn('[legacy]',e); }
+      setSt('hand-','#f0d870',`加载手部JS (${ci+1}/${CDNS.length})…`);
+      updateLoadDetail(`正在加载 @mediapipe/hands (CDN ${ci+1}/${CDNS.length})…`);
+      if(!window.Hands) await loadScriptWithRetry([c.h], 1);
+      setSt('face-','#f0d870',`加载面部JS (${ci+1}/${CDNS.length})…`);
+      updateLoadDetail(`正在加载 @mediapipe/face_mesh (CDN ${ci+1}/${CDNS.length})…`);
+      if(!window.FaceMesh) await loadScriptWithRetry([c.f], 1);
+      // 等待类注册（最多4秒）
+      await new Promise((res,rej)=>{
+        if(window.Hands){ res(); return; }
+        const t0=Date.now();
+        const iv=setInterval(()=>{
+          if(window.Hands){ clearInterval(iv); res(); }
+          else if(Date.now()-t0>4000){ clearInterval(iv); rej(new Error('Hands class not found')); }
+        },100);
+      });
+      ok=true; cfg=c; break;
+    }catch(e){
+      console.warn(`[legacy CDN ${ci+1}] 失败:`,e);
+      updateLoadDetail(`✗ CDN ${ci+1} 失败，尝试下一个…`);
+    }
   }
 
-  if(!ok||!window.Hands){
+  if(!ok || !window.Hands){
     setSt('hand-','#e08080','MediaPipe全部加载失败');
     setSt('face-','#e08080','请检查网络连接');
-    console.error('[MP] 所有CDN均失败');
-    updateLoadDetail('✗ 所有CDN均失败，请检查网络连接后点击"重新加载"按钮');
+    updateLoadDetail('✗ 所有CDN均失败，请点击"重新加载"按钮重试');
     document.getElementById('btn-retry').style.display='inline-block';
     return;
   }
 
-  // 等待类注册
-  const waitCls=(name,ms=3000)=>new Promise((res,rej)=>{
-    if(window[name]){res();return;}
-    const t0=Date.now();
-    const iv=setInterval(()=>{
-      if(window[name]){clearInterval(iv);res();}
-      else if(Date.now()-t0>ms){clearInterval(iv);rej(new Error(name+' timeout'));}
-    },80);
-  });
-  try{ await waitCls('Hands'); await waitCls('FaceMesh'); }
-  catch(e){ 
-    setSt('hand-','#e08080','类注册超时'); 
-    updateLoadDetail('✗ 类注册超时，请点击"重新加载"按钮重试');
-    document.getElementById('btn-retry').style.display='inline-block';
-    return; 
-  }
-
-  setSt('hand-','#f0d870','初始化Hands…');
+  // ─── 初始化 Hands ───
+  setSt('hand-','#f0d870','初始化手部模型…');
+  updateLoadDetail('正在初始化手部模型（首次下载较慢，请稍候）…');
   const hands=new Hands({locateFile:f=>`${cfg.hw}${f}`});
   hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.5,minTrackingConfidence:.45});
   hands.onResults(r=>onHands(r.multiHandLandmarks));
 
-  setSt('face-','#f0d870','初始化FaceMesh…');
+  // ─── 初始化 FaceMesh ───
+  setSt('face-','#f0d870','初始化面部模型…');
   const face=new FaceMesh({locateFile:f=>`${cfg.fw}${f}`});
   face.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.45});
   face.onResults(r=>onFace(r.multiFaceLandmarks));
 
-  // 预热：确保WASM下载完毕
-  setSt('hand-','#f0d870','预热手部模型…');
-  try{ await hands.send({image:video}); setSt('hand-','#7de8a0','手部就绪✓'); }
-  catch(e){ setSt('hand-','#f0d080','手部预热失败'); }
-  setSt('face-','#f0d870','预热面部模型…');
-  try{ await face.send({image:video}); setSt('face-','#7de8a0','面部就绪✓'); }
-  catch(e){ setSt('face-','#f0d080','面部预热失败'); }
+  // ─── 可靠预热（带重试，最多尝试5次，每次间隔500ms）───
+  // MediaPipe 首次 send 前需要下载 WASM，这个过程可能需要几秒
+  // 不能只发一次就判断失败，要重试等待 WASM 加载完成
+  async function warmupWithRetry(model, name, maxTries=8, intervalMs=800){
+    for(let i=0; i<maxTries; i++){
+      try{
+        updateLoadDetail(`正在预热${name}（${i+1}/${maxTries}）…`);
+        await model.send({image:video});
+        return true;  // 成功
+      }catch(e){
+        console.warn(`[${name}] 预热第${i+1}次失败:`, e.message||e);
+        if(i < maxTries-1){
+          await new Promise(r=>setTimeout(r, intervalMs));
+        }
+      }
+    }
+    return false;  // 全部重试失败，但不阻断运行
+  }
 
-  // 驱动循环
+  setSt('hand-','#f0d870','预热手部（加载WASM）…');
+  const handOk = await warmupWithRetry(hands, '手部模型');
+  if(handOk){
+    setSt('hand-','#7de8a0','手部就绪✓');
+    updateLoadDetail('✓ 手部模型预热成功');
+  } else {
+    // 预热失败不阻断，继续运行——检测循环中会自动重试
+    setSt('hand-','#7de8a0','手部运行中');
+    updateLoadDetail('手部模型将在检测时自动就绪');
+    console.warn('[手部] 预热未完成，将在循环中自动完成初始化');
+  }
+
+  setSt('face-','#f0d870','预热面部（加载WASM）…');
+  const faceOk = await warmupWithRetry(face, '面部模型');
+  if(faceOk){
+    setSt('face-','#7de8a0','面部就绪✓');
+    updateLoadDetail('✓ 面部模型预热成功');
+  } else {
+    setSt('face-','#7de8a0','面部运行中');
+    updateLoadDetail('面部模型将在检测时自动就绪');
+    console.warn('[面部] 预热未完成，将在循环中自动完成初始化');
+  }
+
+  updateLoadDetail('✓ 初始化完成，开始检测！');
+
+  // ─── 驱动循环 ───
   let fc=0;
   async function mpTick(){
     fc++;
