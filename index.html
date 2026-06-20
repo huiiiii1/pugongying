@@ -1250,9 +1250,23 @@ async function startCamera(){
     return;
   }
   video.srcObject = stream;
-  await new Promise(r=>{ video.onloadedmetadata=r; });
-  await video.play().catch(()=>{});
-  ovCvs.width=video.videoWidth; ovCvs.height=video.videoHeight;
+  await new Promise((resolve, reject)=>{
+    const onLoaded = ()=>{
+      video.removeEventListener('loadedmetadata', onLoaded);
+      video.removeEventListener('error', onErr);
+      resolve();
+    };
+    const onErr = (e)=>{
+      video.removeEventListener('loadedmetadata', onLoaded);
+      video.removeEventListener('error', onErr);
+      reject(e);
+    };
+    video.addEventListener('loadedmetadata', onLoaded);
+    video.addEventListener('error', onErr);
+    if(video.readyState >= 1) onLoaded();
+  });
+  try { await video.play(); } catch(e){ console.warn('[video.play]', e); }
+  ovCvs.width=video.videoWidth || 320; ovCvs.height=video.videoHeight || 240;
   setSt('cam-','#7de8a0','摄像头已连接');
   document.getElementById('hd-cam').className='hd ok';
   document.getElementById('ht-cam').textContent='摄像头✓';
@@ -1452,7 +1466,7 @@ async function runLegacyMP(){
       setSt('face-','#f0d870',`加载面部JS (${ci+1}/${CDNS.length})…`);
       updateLoadDetail(`正在加载 @mediapipe/face_mesh (CDN ${ci+1}/${CDNS.length})…`);
       if(!window.FaceMesh) await loadScriptWithRetry([c.f], 1);
-      // 等待 Hands 和 FaceMesh 类都注册（最多4秒）
+      // 等待 Hands 和 FaceMesh 类都注册（最多10秒，旧版脚本可能异步初始化）
       await new Promise((res,rej)=>{
         const check=()=>{
           if(window.Hands && window.FaceMesh) return true;
@@ -1462,7 +1476,7 @@ async function runLegacyMP(){
         const t0=Date.now();
         const iv=setInterval(()=>{
           if(check()){ clearInterval(iv); res(); }
-          else if(Date.now()-t0>4000){ clearInterval(iv); rej(new Error('类未注册')); }
+          else if(Date.now()-t0>10000){ clearInterval(iv); rej(new Error('类未注册')); }
         },100);
       });
       ok=true; cfg=c; break;
@@ -1481,11 +1495,12 @@ async function runLegacyMP(){
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  核心：使用 MediaPipe 官方 Camera 模式
-  //  这是 @mediapipe/camera_utils Camera 类的内部实现模式：
-  //    async function loop() { await send(); rAF(loop); }
-  //  rAF 在 await 完成后才调用 → 不可能并发堆积
-  //  不需要预热、不需要 busy 锁、不需要 setTimeout 递归
+  //  核心：旧版 MediaPipe 直接 send + onResults
+  //  关键：
+  //    1. 首次 send 给 60 秒超时，让 WASM+模型充分下载
+  //    2. 使用 busy 锁，防止 send 重叠导致内部状态混乱
+  //    3. setTimeout 递归，避免后台标签页 rAF 被暂停
+  //    4. 串行 hands -> face，降低资源冲突
   // ═══════════════════════════════════════════════════════════
 
   // ─── 初始化 Hands ───
@@ -1500,7 +1515,7 @@ async function runLegacyMP(){
   });
   hands.onResults(r=>{
     _mpHandResults++;
-    if(_mpHandResults <= 3) console.log('[hands.onResults] 第'+_mpHandResults+'次回调, 手数:', r.multiHandLandmarks?.length);
+    if(_mpHandResults <= 5) console.log('[hands.onResults] 第'+_mpHandResults+'次回调, 手数:', r.multiHandLandmarks?.length);
     onHands(r.multiHandLandmarks);
   });
 
@@ -1516,7 +1531,7 @@ async function runLegacyMP(){
   });
   face.onResults(r=>{
     _mpFaceResults++;
-    if(_mpFaceResults <= 3) console.log('[face.onResults] 第'+_mpFaceResults+'次回调, 面数:', r.multiFaceLandmarks?.length);
+    if(_mpFaceResults <= 5) console.log('[face.onResults] 第'+_mpFaceResults+'次回调, 面数:', r.multiFaceLandmarks?.length);
     onFace(r.multiFaceLandmarks);
   });
 
@@ -1526,33 +1541,80 @@ async function runLegacyMP(){
   updateLoadDetail('✓ 模型初始化完成，正在下载WASM并开始检测…');
 
   let _sendCount = 0;
+  let _handBusy = false;
+  let _faceBusy = false;
+  let _handFail = 0;
+  let _faceFail = 0;
+  let _lastHandTs = 0;
+  let _lastFaceTs = 0;
   async function detectLoop(){
-    if(video.readyState >= 2){
-      _sendCount++;
-      if(_sendCount % 50 === 1){
-        console.log(`[detectLoop] 第${_sendCount}帧, hand结果:${_mpHandResults}次, face结果:${_mpFaceResults}次`);
-      }
-      // 带 15 秒超时的 send，防止首次 WASM 下载卡死
-      try {
-        await Promise.race([
-          hands.send({image:video}),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('hand send timeout')), 15000))
-        ]);
-      } catch(e){
-        if(_sendCount <= 5) console.warn('[hands.send] 第'+_sendCount+'帧失败:', e.message||e);
-      }
-      try {
-        await Promise.race([
-          face.send({image:video}),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('face send timeout')), 15000))
-        ]);
-      } catch(e){
-        if(_sendCount <= 5) console.warn('[face.send] 第'+_sendCount+'帧失败:', e.message||e);
-      }
+    // 等待视频真正在播放
+    if(video.readyState < 2 || video.paused || video.ended){
+      setTimeout(detectLoop, 80);
+      return;
     }
-    requestAnimationFrame(detectLoop);
+    // 手部 busy 锁：一次只能有一个 hands.send 在运行
+    if(_handBusy){
+      setTimeout(detectLoop, 50);
+      return;
+    }
+    _sendCount++;
+    const isFirstHand = _mpHandResults === 0;
+    const handTimeoutMs = isFirstHand ? 60000 : 15000;
+    _handBusy = true;
+    try {
+      const start = performance.now();
+      await Promise.race([
+        hands.send({image:video}),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('hand send timeout')), handTimeoutMs))
+      ]);
+      const elapsed = performance.now() - start;
+      if(isFirstHand) updateLoadDetail(`✓ 手部首次检测完成（耗时 ${elapsed.toFixed(0)}ms）`);
+      _handFail = 0;
+      _lastHandTs = performance.now();
+    } catch(e){
+      _handFail++;
+      const msg = e && e.message || String(e);
+      if(_sendCount <= 5 || _handFail <= 3 || _handFail % 10 === 0){
+        console.warn(`[hands.send] 第${_sendCount}帧失败(${_handFail}):`, msg);
+      }
+      if(_handFail === 1) updateLoadDetail('⚠ 手部检测首次调用较慢，继续等待…');
+      if(_handFail === 5){
+        updateLoadDetail('✗ 手部检测多次失败，可能是网络或摄像头问题');
+        const btn = document.getElementById('btn-retry');
+        if(btn) btn.style.display='inline-block';
+      }
+    } finally {
+      _handBusy = false;
+    }
+    // 面部检测：同样带 busy 锁
+    if(_faceBusy){
+      setTimeout(detectLoop, 30);
+      return;
+    }
+    const isFirstFace = _mpFaceResults === 0;
+    const faceTimeoutMs = isFirstFace ? 60000 : 15000;
+    _faceBusy = true;
+    try {
+      await Promise.race([
+        face.send({image:video}),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('face send timeout')), faceTimeoutMs))
+      ]);
+      _faceFail = 0;
+      _lastFaceTs = performance.now();
+    } catch(e){
+      _faceFail++;
+      if(_faceFail <= 3 || _faceFail % 20 === 0) console.warn(`[face.send] 失败(${_faceFail}):`, e && e.message || e);
+    } finally {
+      _faceBusy = false;
+    }
+    // 如果长时间没有手部结果，提示用户
+    if(_mpHandResults > 0 && performance.now() - _lastHandTs > 10000 && _sendCount % 100 === 0){
+      updateLoadDetail('⚠ 已10秒未检测到手，请确认摄像头前手部可见');
+    }
+    setTimeout(detectLoop, 30);
   }
-  requestAnimationFrame(detectLoop);
+  setTimeout(detectLoop, 100);
 }
 
 // ─── 键盘备用操作 ───
