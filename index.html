@@ -119,7 +119,8 @@ input[type=range]{width:100%;accent-color:#90c8e0;cursor:pointer;}
 #loader{
   position:fixed;inset:0;z-index:999;
   background:linear-gradient(180deg,#b8dff5,#d8eff8,#ceeab5);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:16px;
   transition:opacity .9s;
 }
 #loader.bye{opacity:0;pointer-events:none;}
@@ -1630,6 +1631,10 @@ async function main(){
   // 隐藏教程弹窗
   document.getElementById('tutorial').classList.add('hidden');
   setTimeout(()=>{ document.getElementById('tutorial').style.display='none'; }, 600);
+  // 显示加载页（教程确认后再进入加载，避免按钮被加载层遮挡）
+  const loader = document.getElementById('loader');
+  loader.style.display='flex';
+  loader.classList.remove('bye');
   
   // 开始加载摄像头和 MediaPipe
   await startCamera();
