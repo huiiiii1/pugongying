@@ -289,10 +289,9 @@ function initClouds(){
   const layer = document.getElementById('cloud-layer');
   const W = window.innerWidth;
   const specs=[
-    {top:'2%',s:1.6,spd:44,op:.9},{top:'9%',s:.95,spd:62,op:.72},
-    {top:'15%',s:1.3,spd:50,op:.8},{top:'5%',s:.75,spd:72,op:.65},
-    {top:'19%',s:1.1,spd:46,op:.82},{top:'1%',s:.88,spd:60,op:.7},
-    {top:'12%',s:1.4,spd:54,op:.76},{top:'7%',s:1.0,spd:57,op:.68},
+    {top:'2%',s:1.2,spd:50,op:.85},{top:'9%',s:.8,spd:65,op:.65},
+    {top:'15%',s:1.0,spd:55,op:.75},{top:'5%',s:.7,spd:70,op:.60},
+    {top:'12%',s:1.1,spd:48,op:.80},
   ];
   specs.forEach(({top,s,spd,op})=>{
     const d = document.createElement('div');
@@ -321,9 +320,9 @@ function initClouds(){
 // ═══════════════════════════════════
 const cvs = document.getElementById('c3d');
 const renderer = new THREE.WebGLRenderer({canvas:cvs,antialias:true,alpha:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = false;
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,500);
 // 摄像机位置：让草地+蒲公英占满下三分之一
@@ -331,12 +330,12 @@ cam.position.set(0,14,28);
 cam.lookAt(0,-4,0);
 scene.add(new THREE.AmbientLight(0xfff0e8,1.5));
 const sun = new THREE.DirectionalLight(0xffe8cc,1.8);
-sun.position.set(10,20,12); sun.castShadow=true; scene.add(sun);
+sun.position.set(10,20,12); scene.add(sun);
 
 // 草地（宽广起伏，丰富质感）
 (function(){
-  // 主草地：高细分 + 多层起伏
-  const geo = new THREE.PlaneGeometry(140,50,240,90);
+  // 主草地：中等细分 + 多层起伏
+  const geo = new THREE.PlaneGeometry(140,50,80,40);
   const pos = geo.attributes.position;
   for(let i=0;i<pos.count;i++){
     const x=pos.getX(i), z=pos.getZ(i);
@@ -370,57 +369,8 @@ sun.position.set(10,20,12); sun.castShadow=true; scene.add(sun);
   geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   const mat = new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
   const m = new THREE.Mesh(geo,mat);
-  m.rotation.x=-Math.PI/2; m.position.y=-2.2; m.receiveShadow=true;
+  m.rotation.x=-Math.PI/2; m.position.y=-2.2;
   scene.add(m);
-
-  // 第二层：草地绒毛纹理（细密小草丛点缀）
-  const bladeGeo = new THREE.PlaneGeometry(145,52);
-  const bladeCols=[];
-  for(let i=0;i<bladeGeo.attributes.position.count;i++){
-    // 比主草稍亮稍暖的绿色系，带随机变化
-    const c = .55+Math.random()*.18;
-    const g = .75+Math.random()*.13;
-    const b = .35+Math.random()*.15;
-    bladeCols.push(c,g,b,.45);  // 带透明度的顶点色
-  }
-  bladeGeo.setAttribute('color',new THREE.Float32BufferAttribute(bladeCols,4));
-  const bladeMat = new THREE.MeshLambertMaterial({
-    vertexColors:true,
-    transparent:true,
-    opacity:.35,
-    side:THREE.DoubleSide,
-    depthWrite:false
-  });
-  const blades = new THREE.Mesh(bladeGeo,bladeMat);
-  blades.rotation.x=-Math.PI/2;
-  blades.position.y=-2.15;  // 稍微浮在主草之上
-  scene.add(blades);
-
-  // 第三层：散落的"小草叶"粒子群（增加微观质感）
-  const patchCount = 800;
-  const patchGeo = new THREE.InstancedMesh(
-    new THREE.PlaneGeometry(.6+.8*Math.random(), .25+.35*Math.random()),
-    new THREE.MeshLambertMaterial({
-      color:0x7ac04a,
-      transparent:true, opacity:.40,
-      side:THREE.DoubleSide, depthWrite:false
-    }),
-    patchCount
-  );
-  const dummy = new THREE.Object3D();
-  const patchColors = [0x6ab840,0x78c84e,0x82d05a,0x5cb038,0x68b844];
-  for(let i=0;i<patchCount;i++){
-    dummy.position.set(
-      (Math.random()-.5)*135,
-      -2.10+Math.random()*0.25,
-      (Math.random()-.5)*47
-    );
-    dummy.rotation.set(-Math.PI/2+Math.random()*.25-Math.random()*0.15, Math.random()*Math.PI*2, Math.random()*0.3);
-    dummy.scale.setScalar(0.6+Math.random()*1.0);
-    dummy.updateMatrix();
-    patchGeo.setMatrixAt(i,dummy.matrix);
-  }
-  scene.add(patchGeo);
 })();
 
 // ═══════════════════════════════════
@@ -433,25 +383,32 @@ const SEED_COL  = new THREE.Color(0xffe066);  // 亮金黄
 const SEED_COL2 = new THREE.Color(0xffd030);  // 深金黄（备用）
 const HEAD_COL  = new THREE.Color(0xfafaf2);  // 近白色绒毛
 const STEM_COLS = [0x5cbb55,0x44aa3c,0x6acc5a,0x3da038,0x78cc68]; // 更鲜明翠绿
-// 更大的几何体：头球0.45，种子0.12，wire 1.0
+// 共享材质实例（减少GPU材质切换开销）
+const SEED_MATS = [
+  new THREE.MeshBasicMaterial({color:SEED_COL,transparent:true,opacity:1.0,depthWrite:false}),
+  new THREE.MeshBasicMaterial({color:SEED_COL2,transparent:true,opacity:1.0,depthWrite:false}),
+];
+const WIRE_MAT  = new THREE.MeshBasicMaterial({color:0xe8f5d0,transparent:true,opacity:.75});
 const SEED_GEO  = new THREE.SphereGeometry(.12,5,4);
 const WIRE_GEO  = new THREE.CylinderGeometry(.009,.009,1.0,4);
+const SEEDS_PER_DAND = 12;  // 每株种子数（从20减到12）
 
 function makeSeedGroup(headY, i, N){
   const phi   = Math.acos(-1+(2*i)/N);
   const theta = Math.sqrt(N*Math.PI)*phi;
   const sg = new THREE.Group();
   sg.position.y = headY;
-  // wire：绿白渐变感
-  sg.add(new THREE.Mesh(WIRE_GEO,
-    new THREE.MeshBasicMaterial({color:0xe8f5d0,transparent:true,opacity:.75})));
-  // 种子球：金黄色，发光感
-  const seedColor = Math.random()>.4 ? SEED_COL : SEED_COL2;
-  const bm = new THREE.Mesh(SEED_GEO,
-    new THREE.MeshBasicMaterial({color:seedColor,transparent:true,opacity:1.0,depthWrite:false}));
+  // wire：共享材质
+  const wireMesh = new THREE.Mesh(WIRE_GEO, WIRE_MAT);
+  // 为每根wire独立克隆材质，以便吹散时单独控制opacity
+  wireMesh.material = WIRE_MAT.clone();
+  sg.add(wireMesh);
+  // 种子球：从共享池中选一个材质，但clone以便独立控制opacity
+  const baseMat = SEED_MATS[Math.random()>.4 ? 0 : 1];
+  const bm = new THREE.Mesh(SEED_GEO, baseMat.clone());
   bm.position.y=1.0; sg.add(bm);
   sg.rotation.x=phi-Math.PI/2; sg.rotation.z=theta;
-  return {mesh:sg, mat:bm.material, rx0:sg.rotation.x, rz0:sg.rotation.z, blown:false};
+  return {mesh:sg, mat:bm.material, wireMat:wireMesh.material, rx0:sg.rotation.x, rz0:sg.rotation.z, blown:false};
 }
 
 function makeDand(x,z){
@@ -473,7 +430,7 @@ function makeDand(x,z){
   head.position.y = headY; g.add(head);
   // 种子（每株20颗，更密更圆满）
   const seeds=[];
-  const N=20;
+  const N=SEEDS_PER_DAND;
   for(let i=0;i<N;i++){
     const sd = makeSeedGroup(headY, i, N);
     g.add(sd.mesh);
@@ -490,12 +447,12 @@ function makeDand(x,z){
 }
 
 function buildField(){
-  // 300株：25列×12行，铺满下三分之一视野
-  const cols=25, rows=12, xR=120, zMin=-6, zMax=16;
+  // 80株：8列×10行，铺满视野（性能友好）
+  const cols=8, rows=10, xR=100, zMin=-4, zMax=14;
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
-      const x = -xR/2 + (c/(cols-1))*xR + (Math.random()-.5)*4.0;
-      const z = zMin + (r/(rows-1))*(zMax-zMin) + (Math.random()-.5)*2.0;
+      const x = -xR/2 + (c/(cols-1))*xR + (Math.random()-.5)*5.0;
+      const z = zMin + (r/(rows-1))*(zMax-zMin) + (Math.random()-.5)*2.5;
       makeDand(x,z);
     }
   }
@@ -527,7 +484,7 @@ function launchSeed(sd,dand,dir){
   const sc = .85+Math.random()*.55;
   sd.mesh.scale.setScalar(sc);
   flyQ.push({mesh:sd.mesh,mat:sd.mat,vel:{x:vx,y:vy,z:vz},life:0,
-    maxLife:250+Math.random()*200,seed:sd});  // 飘散时间更长
+    maxLife:120+Math.random()*100,seed:sd});  // 缩短飘散时间（从250→120），减少活跃粒子数
 }
 
 function blowDand(dand,dir){
@@ -547,7 +504,7 @@ function rebuildSeeds(d){
     if(s.mesh.parent) s.mesh.parent.remove(s.mesh);
   });
   d.seeds.length=0;
-  const N=20;  // 与makeDand保持一致
+  const N=SEEDS_PER_DAND;  // 与makeDand保持一致
   for(let i=0;i<N;i++){
     const sd=makeSeedGroup(d.headY,i,N);
     d.g.add(sd.mesh);
@@ -596,9 +553,9 @@ function initFocusRenderer(){
   const sz = Math.min(window.innerWidth*.8, window.innerHeight*.8, 640);
   focusCvs.width = sz; focusCvs.height = sz;
   // 独立的小型Three.js渲染器（offscreen canvas）
-  focusRenderer = new THREE.WebGLRenderer({antialias:true,alpha:true});
+  focusRenderer = new THREE.WebGLRenderer({antialias:false,alpha:true});  // 关闭抗锯齿（聚焦层够小不需要）
   focusRenderer.setSize(sz,sz);
-  focusRenderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  focusRenderer.setPixelRatio(1);  // 聚焦层固定1x像素比
   focusScene = new THREE.Scene();
   // 相机后移，FOV加大，让整株蒲公英（茎+头球+种子）完整入镜
   focusCam = new THREE.PerspectiveCamera(60,1,.1,200);
@@ -737,7 +694,7 @@ function blowDandInFocus(dand){
           y:vElev*spd,
           z:Math.sin(angle)*spd*.5+(Math.random()-.5)*.015
         },
-        life:0, maxLife:280+Math.random()*180
+        life:0, maxLife:140+Math.random()*100
       });
     }, i * Math.max(4, 20/CFG.seedSpeed));
   });
@@ -1412,21 +1369,21 @@ async function runTasksVision(){
 
     updateLoadDetail('✓ 所有模型加载完成，开始检测…');
 
-    // 5. 检测循环
+    // 5. 检测循环（降低频率减少CPU占用）
     let lastTime=-1, fc=0;
     function detect(){
-      setTimeout(detect, 33);
+      setTimeout(detect, 50);  // 从33ms→50ms（~20fps检测）
       if(video.readyState<2) return;
       const now=performance.now();
       if(video.currentTime===lastTime) return;
       lastTime=video.currentTime; fc++;
-      if(fc%2===0){
+      if(fc%3===0){  // 手部：从每2帧→每3帧
         try {
           const r=handL.detectForVideo(video, now);
           onHands(r.landmarks);
         } catch(e){ console.warn('hand detect err', e); }
       }
-      if(fc%3===0 && faceL){
+      if(fc%5===0 && faceL){  // 面部：从每3帧→每5帧
         try {
           const r=faceL.detectForVideo(video, now);
           onFace(r.faceLandmarks);
